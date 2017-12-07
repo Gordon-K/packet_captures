@@ -1,5 +1,5 @@
 # packet_captures
-Script to help look for memory leaks on Checkpoint appliances  
+Script to assist with taking packet captures on Checkpoint GWs
 ## To Use
 1. Put Script on GW  
 2. Run the following commands from expert mode:  
