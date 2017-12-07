@@ -3,7 +3,7 @@
 # Kyle Gordon 
 # HE T3 Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.3.0
+# Version: 0.3.1
 # Last Modified Dec 07, 2017
 
 ###############################################################################
@@ -135,10 +135,6 @@ function startCaptures {
 	nohup fw monitor -o ~/fw_mon.pcap & &> /dev/null
 	echo "nohup fw monitor -o ~/fw_mon.pcap &" >> ~/logs.txt
 
-	printf "Starting Zdebug drop\n"
-	fw ctl zdebug drop &> ~/zdebug.txt & &> /dev/null
-	echo "fw ctl zdebug drop &> ~/zdebug.txt &" >> ~/logs.txt
-
 	# If user specified a debug flag
 	if [[ "$1" == "-s"  ||  "$1" == "--sim-debug" ]]; then
 		printf "Starting Sim Debug\n"
@@ -154,6 +150,10 @@ function startCaptures {
 		echo "sim dbg -m pkt all" >> ~/logs.txt
 		fw ctl kdebug -T -f > ~/sim_debug & &> /dev/null
 		echo "fw ctl kdebug -T -f > ~/sim_debug &" >> ~/logs.txt
+	else 
+		printf "Starting Zdebug drop\n"
+		fw ctl zdebug drop &> ~/zdebug.txt & &> /dev/null
+		echo "fw ctl zdebug drop &> ~/zdebug.txt &" >> ~/logs.txt
 	fi
 }
 
