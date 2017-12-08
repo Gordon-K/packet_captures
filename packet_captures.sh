@@ -3,8 +3,8 @@
 # Kyle Gordon 
 # HE T3 Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.3.1
-# Last Modified Dec 07, 2017
+# Version: 0.3.1.1
+# Last Modified Dec 08, 2017
 
 ###############################################################################
 # Functions
@@ -125,9 +125,12 @@ function startCaptures {
 	echo "nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} &" >> ~/logs.txt
 
 	# if SecureXL is on turn it off
-	if [[ $yesno_securexl == 1 ]]; then
+	if [[ ($yesno_securexl == 1 || $yesno_securexl == 0) && !("$1" == "-s"  ||  "$1" == "--sim-debug") ]]; then
 		printf "Disabling SecureXL\n"
 		fwaccel off &> /dev/null
+	else 
+		printf "Enabling SecureXL\n"
+		fwaccel on &> /dev/null
 	fi
 
 	printf "Starting FW Monitor\n"
@@ -167,6 +170,9 @@ function stopCaptures {
 	if [[ $yesno_securexl == 1 ]]; then
 		printf "Enabling SecureXL\n"
 		fwaccel on &> /dev/null
+	else 
+		printf "Disabling SecureXL\n"
+		fwaccel off &> /dev/null
 	fi
 
 	# If user specified a debug flag
