@@ -9,4 +9,6 @@ Script to assist with taking packet captures on Checkpoint GWs
   Script can be run with the following flags:  
   Help Menu: -h --help -help  
   SIM debug: -s --sim-debug  
+  IPS debug: -i --ips-debug  
+  APPI debug: -a --appi-debug  
 3. Script will ask for Source and Destination IPs as well as a time in seconds to run
