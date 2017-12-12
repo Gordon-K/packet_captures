@@ -3,7 +3,7 @@
 # Kyle Gordon 
 # HE T3 Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.3.1.1
+# Version: 0.3.3
 # Last Modified Dec 08, 2017
 
 ###############################################################################
@@ -15,8 +15,6 @@ if [[ "$1" == "-h"  ||  "$1" == "--help" ||  "$1" == "-help" ]]; then
 	tput bold
 	printf "==========================================================================\n"
 	printf "|                     Script Created By: Kyle Gordon                     |\n"
-	printf "|               This script is not supported by Checkpoint,              |\n"
-	printf "|                  it was created because Kyle is lazy.                  |\n"
 	printf "==========================================================================\n"
 	printf "\n"
 	printf "\t Script will ask user to enter in a source IP, destination IP, and amount of time\n"
@@ -33,12 +31,36 @@ if [[ "$1" == "-h"  ||  "$1" == "--help" ||  "$1" == "-help" ]]; then
 	\t\t# fw ctl debug -m fw + conn drop tcpstr vm
 	\t\t# fwaccel dbg -m general + offload
 	\t\t# sim dbg -m pkt all
-	\t\t# fw ctl kdebug -T -f > ~/kernel_debug
+	\t\t# fw ctl kdebug -T -f > ~/sim_debug
 	
 	\t\tDebug Stop
 	\t\t# fw ctl debug 0
 	\t\t# sim dbg resetall
 	\t\t# fwaccel dbg resetall\n"
+	printf "\t-i --ips-debug ***THIS SHOULD BE DONE DURRING A MAINTENANCE WINDOW***
+	\t\t This debug should be used if you suspect IPS is dropping traffic. This can be the reason\n
+	\t\twhy traffic is dropping on an accept rule
+	\t\tDebug commands:
+	\t\tDebug Start
+	\t\t# fw ctl debug 0
+	\t\t# fw ctl debug -buf 32000
+	\t\t# fw ctl debug -m fw + conn drop tcpstr vm aspii spii cmi
+	\t\t# fw ctl kdebug -T -f > ~/ips_debug
+
+	\t\tDebug Stop
+	\t\t# fw ctl debug 0\n"
+	printf "\t-a --appi-debug ***THIS SHOULD BE DONE DURRING A MAINTENANCE WINDOW***
+	\t\t This debug should be used if you suspect Application Control is dropping traffic. This can be the reason\n
+	\t\twhy traffic is dropping on an accept rule
+	\t\tDebug commands:
+	\t\tDebug Start
+	\t\t# fw ctl debug 0
+	\t\t# fw ctl debug -buf 32000
+	\t\t# fw ctl debug -m APPI all
+	\t\t# fw ctl kdebug -T -f > ~/appi_debug
+
+	\t\tDebug Stop
+	\t\t# fw ctl debug 0\n"
 	tput sgr0
 	exit 0
 
@@ -56,21 +78,23 @@ function logo {
 	printf "\n"
 	printf "==========================================================================\n"
 	printf "|                     Script Created By: Kyle Gordon                     |\n"
-	printf "|               This script is not supported by Checkpoint,              |\n"
-	printf "|                  it was created because Kyle is lazy.                  |\n"
 	printf "==========================================================================\n"
 }
 
 function getTestHost {
-	if [[ $1 != "" ]]; then
+	if [[ "$1" != "" ]]; then
 		printf "This script was run with the $1 flag, information about flags can be found by starting the script with the -h flag\n"
 	fi
+
 	printf "Enter Source IP address: "
 	read srcIP
+
 	printf "Enter Destination IP address: "
 	read dstIP
+
 	printf "Please enter the amount of time in seconds that you would like these packet captures to run for: "
 	read sleepTimer
+
 	printf "If any of the above fields are incorrect then press Ctrl+C to stop this script NOW!\n"
 	sleep 5s
 }
@@ -128,9 +152,11 @@ function startCaptures {
 	if [[ ($yesno_securexl == 1 || $yesno_securexl == 0) && !("$1" == "-s"  ||  "$1" == "--sim-debug") ]]; then
 		printf "Disabling SecureXL\n"
 		fwaccel off &> /dev/null
+		echo "fwaccel off &> /dev/null" >> ~/logs.txt
 	else 
 		printf "Enabling SecureXL\n"
 		fwaccel on &> /dev/null
+		echo "fwaccel on &> /dev/null" >> ~/logs.txt
 	fi
 
 	printf "Starting FW Monitor\n"
@@ -153,33 +179,66 @@ function startCaptures {
 		echo "sim dbg -m pkt all" >> ~/logs.txt
 		fw ctl kdebug -T -f > ~/sim_debug & &> /dev/null
 		echo "fw ctl kdebug -T -f > ~/sim_debug &" >> ~/logs.txt
+	elif [[ "$1" == "-i"  ||  "$1" == "--ips-debug" ]]; then
+		fw ctl debug 0 &> /dev/null
+		echo "fw ctl debug 0" >> ~/logs.txt
+		fw ctl debug -buf 32000 &> /dev/null
+		echo "fw ctl debug -buf 32000" >> ~/logs.txt
+		fw ctl debug -m fw + conn drop tcpstr vm aspii spii cmi &> /dev/null
+		echo "fw ctl debug -m fw + conn drop tcpstr vm aspii spii cmi" >> ~/logs.txt
+		fw ctl kdebug -T -f > ~/ips_debug & &> /dev/null
+		echo "fw ctl kdebug -T -f > ~/ips_debug &" >> ~/logs.txt
+	elif [[ "$1" == "-a"  ||  "$1" == "--appi-debug" ]]; then
+		fw ctl debug 0 &> /dev/null
+		echo "fw ctl debug 0" >> ~/logs.txt
+		fw ctl debug -buf 32000 &> /dev/null
+		echo "fw ctl debug -buf 32000" >> ~/logs.txt
+		fw ctl debug -m APPI all &> /dev/null
+		echo "fw ctl debug -m APPI all &> /dev/null" >> ~/logs.txt
+		fw ctl kdebug -T -f > ~/appi_debug & &> /dev/null
+		echo "fw ctl kdebug -T -f > ~/appi_debug &" >> ~/logs.txt
 	else 
 		printf "Starting Zdebug drop\n"
 		fw ctl zdebug drop &> ~/zdebug.txt & &> /dev/null
 		echo "fw ctl zdebug drop &> ~/zdebug.txt &" >> ~/logs.txt
 	fi
+
+	# Wait for the specified amout of time 
+	sleep ${sleepTimer}s
 }
 
 function stopCaptures {
 	for LINE in $(jobs -p)
 	do
 		kill ${LINE}
+		echo "kill ${LINE}" >> ~/logs.txt
 	done
 
 	# if SecureXL was off already leave it off
 	if [[ $yesno_securexl == 1 ]]; then
 		printf "Enabling SecureXL\n"
 		fwaccel on &> /dev/null
+		echo "fwaccel on &> /dev/null" >> ~/logs.txt
 	else 
 		printf "Disabling SecureXL\n"
 		fwaccel off &> /dev/null
+		echo "fwaccel off &> /dev/null" >> ~/logs.txt
 	fi
 
 	# If user specified a debug flag
 	if [[ "$1" == "-s"  ||  "$1" == "--sim-debug" ]]; then
 		fw ctl debug 0 &> /dev/null
+		echo "fw ctl debug 0 &> /dev/null" >> ~/logs.txt
 		sim dbg resetall &> /dev/null
+		echo "sim dbg resetall &> /dev/null" >> ~/logs.txt
 		fwaccel dbg resetall &> /dev/null
+		echo "fwaccel dbg resetall &> /dev/null" >> ~/logs.txt
+	elif [[ "$1" == "-i"  ||  "$1" == "--ips-debug" ]]; then
+		fw ctl debug 0 &> /dev/null
+		echo "fw ctl debug 0 &> /dev/null" >> ~/logs.txt
+	elif [[ "$1" == "-a"  ||  "$1" == "--appi-debug" ]]; then
+		fw ctl debug 0 &> /dev/null
+		echo "fw ctl debug 0 &> /dev/null" >> ~/logs.txt
 	fi
 }
 
@@ -220,6 +279,5 @@ getTestHost $1
 findInterfaces
 checkSecureXL
 startCaptures $1
-sleep ${sleepTimer}s
 stopCaptures $1
 cleanup $1
