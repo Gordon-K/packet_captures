@@ -3,8 +3,8 @@
 # Kyle Gordon 
 # HE T3 Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.3.3
-# Last Modified Dec 12, 2017
+# Version: 0.3.5
+# Last Modified Jan 04, 2017
 
 ###############################################################################
 # Functions
@@ -21,8 +21,32 @@ if [[ "$1" == "-h"  ||  "$1" == "--help" ||  "$1" == "-help" ]]; then
 	printf "\tin seconds that they would like the script to run for"
 	printf "\n"
 	printf "\t By default the script will collect TCPdumps, FW Monitor, and ZDebug drop. To change\n"
-	printf "\tthe default setting use the below flags:\n"
+	printf "\tthe default setting use the below flags (Script only uses one flag at a time):\n"
 	printf "\n"
+	printf "\t-a --appi-debug ***THIS SHOULD BE DONE DURRING A MAINTENANCE WINDOW***
+	\t\t This debug should be used if you suspect Application Control is dropping traffic. This can be the reason\n
+	\t\twhy traffic is dropping on an accept rule
+	\t\tDebug commands:
+	\t\tDebug Start
+	\t\t# fw ctl debug 0
+	\t\t# fw ctl debug -buf 32000
+	\t\t# fw ctl debug -m APPI all
+	\t\t# fw ctl kdebug -T -f > ~/appi_debug
+
+	\t\tDebug Stop
+	\t\t# fw ctl debug 0\n"
+	printf "\t-i --ips-debug ***THIS SHOULD BE DONE DURRING A MAINTENANCE WINDOW***
+	\t\t This debug should be used if you suspect IPS is dropping traffic. This can be the reason\n
+	\t\twhy traffic is dropping on an accept rule
+	\t\tDebug commands:
+	\t\tDebug Start
+	\t\t# fw ctl debug 0
+	\t\t# fw ctl debug -buf 32000
+	\t\t# fw ctl debug -m fw + conn drop tcpstr vm aspii spii cmi
+	\t\t# fw ctl kdebug -T -f > ~/ips_debug
+
+	\t\tDebug Stop
+	\t\t# fw ctl debug 0\n"
 	printf "\t-s --sim-debug ***THIS SHOULD BE DONE DURRING A MAINTENANCE WINDOW***
 	\t\tDebug commands:
 	\t\tDebug Start
@@ -37,30 +61,8 @@ if [[ "$1" == "-h"  ||  "$1" == "--help" ||  "$1" == "-help" ]]; then
 	\t\t# fw ctl debug 0
 	\t\t# sim dbg resetall
 	\t\t# fwaccel dbg resetall\n"
-	printf "\t-i --ips-debug ***THIS SHOULD BE DONE DURRING A MAINTENANCE WINDOW***
-	\t\t This debug should be used if you suspect IPS is dropping traffic. This can be the reason\n
-	\t\twhy traffic is dropping on an accept rule
-	\t\tDebug commands:
-	\t\tDebug Start
-	\t\t# fw ctl debug 0
-	\t\t# fw ctl debug -buf 32000
-	\t\t# fw ctl debug -m fw + conn drop tcpstr vm aspii spii cmi
-	\t\t# fw ctl kdebug -T -f > ~/ips_debug
-
-	\t\tDebug Stop
-	\t\t# fw ctl debug 0\n"
-	printf "\t-a --appi-debug ***THIS SHOULD BE DONE DURRING A MAINTENANCE WINDOW***
-	\t\t This debug should be used if you suspect Application Control is dropping traffic. This can be the reason\n
-	\t\twhy traffic is dropping on an accept rule
-	\t\tDebug commands:
-	\t\tDebug Start
-	\t\t# fw ctl debug 0
-	\t\t# fw ctl debug -buf 32000
-	\t\t# fw ctl debug -m APPI all
-	\t\t# fw ctl kdebug -T -f > ~/appi_debug
-
-	\t\tDebug Stop
-	\t\t# fw ctl debug 0\n"
+	printf "\t-S --sim-on
+	\t\tThis will force SecureXL to stay on during the debugs"
 	tput sgr0
 	exit 0
 
@@ -141,15 +143,19 @@ function startCaptures {
 
 	printf "Starting Packet Captures...\n"
 	printf "Starting Ingress TCPdump on interface ${ingress}\n"
-	nohup tcpdump -s 0 -nnei ${ingress} -C 100 -W 10 -w ~/tcpdump-ingress.pcap -Z ${USER} & &> /dev/null
-	echo "nohup tcpdump -s 0 -nnei ${ingress} -C 100 -W 10 -w ~/tcpdump-ingress.pcap -Z ${USER} &" >> ~/logs.txt
+	nohup tcpdump -s 0 -nnei ${ingress} -C 100 -W 10 -w ~/tcpdump-ingress.pcap -Z ${USER} >/dev/null 2>&1 &
+	echo "nohup tcpdump -s 0 -nnei ${ingress} -C 100 -W 10 -w ~/tcpdump-ingress.pcap -Z ${USER} >/dev/null 2>&1 &" >> ~/logs.txt
 
 	printf "Starting Egress TCPdump on interface ${egress}\n"
-	nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} & &> /dev/null
-	echo "nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} &" >> ~/logs.txt
+	nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} >/dev/null 2>&1 &
+	echo "nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} >/dev/null 2>&1 &" >> ~/logs.txt
 
 	# if SecureXL is on turn it off
-	if [[ ($yesno_securexl == 1 || $yesno_securexl == 0) && !("$1" == "-s"  ||  "$1" == "--sim-debug") ]]; then
+	if [[ "$1" == "-S"  ||  "$1" == "--sim-on" ]]; then
+		printf "Enabling SecureXL\n"
+		fwaccel on &> /dev/null
+		echo "fwaccel on &> /dev/null" >> ~/logs.txt
+	elif [[ ($yesno_securexl == 1 || $yesno_securexl == 0) && !("$1" == "-s"  ||  "$1" == "--sim-debug") ]]; then
 		printf "Disabling SecureXL\n"
 		fwaccel off &> /dev/null
 		echo "fwaccel off &> /dev/null" >> ~/logs.txt
@@ -161,8 +167,8 @@ function startCaptures {
 
 	printf "Starting FW Monitor\n"
 
-	nohup fw monitor -o ~/fw_mon.pcap & &> /dev/null
-	echo "nohup fw monitor -o ~/fw_mon.pcap &" >> ~/logs.txt
+	nohup fw monitor -o ~/fw_mon.pcap >/dev/null 2>&1 &
+	echo "nohup fw monitor -o ~/fw_mon.pcap >/dev/null 2>&1 &" >> ~/logs.txt
 
 	# If user specified a debug flag
 	if [[ "$1" == "-s"  ||  "$1" == "--sim-debug" ]]; then
@@ -200,7 +206,7 @@ function startCaptures {
 	else 
 		printf "Starting Zdebug drop\n"
 		fw ctl zdebug drop &> ~/zdebug.txt & &> /dev/null
-		echo "fw ctl zdebug drop &> ~/zdebug.txt &" >> ~/logs.txt
+		echo "fw ctl zdebug drop &> ~/zdebug.txt & &> /dev/null" >> ~/logs.txt
 	fi
 
 	# Wait for the specified amout of time 
@@ -210,7 +216,7 @@ function startCaptures {
 function stopCaptures {
 	for LINE in $(jobs -p)
 	do
-		kill ${LINE}
+		kill ${LINE} >/dev/null 2>&1
 		echo "kill ${LINE}" >> ~/logs.txt
 	done
 
@@ -268,6 +274,10 @@ function cleanup {
 
 	tar -zcvf ~/packet_captures.tgz ~/tcpdump-ingress* ~/tcpdump-egress* ~/fw_mon.pcap ~/zdebug.txt ~/logs.txt ~/*_debug &> /dev/null
 	rm ~/tcpdump-ingress* ~/tcpdump-egress* ~/fw_mon.pcap ~/zdebug.txt ~/logs.txt ~/*_debug ~/nohup.out &> /dev/null
+
+	printf "Files located in "
+	printf ~/packet_captures.tgz
+	printf "\n"
 }
 
 ###############################################################################
