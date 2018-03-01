@@ -4,7 +4,7 @@
 # HE T3 Engineer
 # Check Point Software Technologies Ltd.
 # Version: 0.3.5
-# Last Modified Jan 04, 2017
+# Last Modified Mar 01, 2018
 
 ###############################################################################
 # Functions
@@ -144,68 +144,89 @@ function startCaptures {
 	printf "Starting Packet Captures...\n"
 	printf "Starting Ingress TCPdump on interface ${ingress}\n"
 	nohup tcpdump -s 0 -nnei ${ingress} -C 100 -W 10 -w ~/tcpdump-ingress.pcap -Z ${USER} >/dev/null 2>&1 &
+	echo -n "[ $(date) ] " >> ~/logs.txt
 	echo "nohup tcpdump -s 0 -nnei ${ingress} -C 100 -W 10 -w ~/tcpdump-ingress.pcap -Z ${USER} >/dev/null 2>&1 &" >> ~/logs.txt
 
 	printf "Starting Egress TCPdump on interface ${egress}\n"
 	nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} >/dev/null 2>&1 &
+	echo -n "[ $(date) ] " >> ~/logs.txt
 	echo "nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} >/dev/null 2>&1 &" >> ~/logs.txt
 
 	# if SecureXL is on turn it off
 	if [[ "$1" == "-S"  ||  "$1" == "--sim-on" ]]; then
 		printf "Enabling SecureXL\n"
 		fwaccel on &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fwaccel on &> /dev/null" >> ~/logs.txt
 	elif [[ ($yesno_securexl == 1 || $yesno_securexl == 0) && !("$1" == "-s"  ||  "$1" == "--sim-debug") ]]; then
 		printf "Disabling SecureXL\n"
 		fwaccel off &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fwaccel off &> /dev/null" >> ~/logs.txt
 	else 
 		printf "Enabling SecureXL\n"
 		fwaccel on &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fwaccel on &> /dev/null" >> ~/logs.txt
 	fi
 
 	printf "Starting FW Monitor\n"
 
 	nohup fw monitor -o ~/fw_mon.pcap >/dev/null 2>&1 &
+	echo -n "[ $(date) ] " >> ~/logs.txt
 	echo "nohup fw monitor -o ~/fw_mon.pcap >/dev/null 2>&1 &" >> ~/logs.txt
 
 	# If user specified a debug flag
 	if [[ "$1" == "-s"  ||  "$1" == "--sim-debug" ]]; then
 		printf "Starting Sim Debug\n"
 		fw ctl debug 0 &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl debug 0" >> ~/logs.txt
 		fw ctl debug -buf 32000 &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl debug -buf 32000" >> ~/logs.txt
 		fw ctl debug -m fw + conn drop tcpstr vm &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl debug -m fw + conn drop tcpstr vm" >> ~/logs.txt
 		fwaccel dbg -m general + offload &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fwaccel dbg -m general + offload" >> ~/logs.txt
 		sim dbg -m pkt all &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "sim dbg -m pkt all" >> ~/logs.txt
 		fw ctl kdebug -T -f > ~/sim_debug & &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl kdebug -T -f > ~/sim_debug &" >> ~/logs.txt
 	elif [[ "$1" == "-i"  ||  "$1" == "--ips-debug" ]]; then
 		fw ctl debug 0 &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl debug 0" >> ~/logs.txt
 		fw ctl debug -buf 32000 &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl debug -buf 32000" >> ~/logs.txt
 		fw ctl debug -m fw + conn drop tcpstr vm aspii spii cmi &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl debug -m fw + conn drop tcpstr vm aspii spii cmi" >> ~/logs.txt
 		fw ctl kdebug -T -f > ~/ips_debug & &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl kdebug -T -f > ~/ips_debug &" >> ~/logs.txt
 	elif [[ "$1" == "-a"  ||  "$1" == "--appi-debug" ]]; then
 		fw ctl debug 0 &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl debug 0" >> ~/logs.txt
 		fw ctl debug -buf 32000 &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl debug -buf 32000" >> ~/logs.txt
 		fw ctl debug -m APPI all &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl debug -m APPI all &> /dev/null" >> ~/logs.txt
 		fw ctl kdebug -T -f > ~/appi_debug & &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl kdebug -T -f > ~/appi_debug &" >> ~/logs.txt
 	else 
 		printf "Starting Zdebug drop\n"
 		fw ctl zdebug drop &> ~/zdebug.txt & &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl zdebug drop &> ~/zdebug.txt & &> /dev/null" >> ~/logs.txt
 	fi
 
@@ -217,6 +238,7 @@ function stopCaptures {
 	for LINE in $(jobs -p)
 	do
 		kill ${LINE} >/dev/null 2>&1
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "kill ${LINE}" >> ~/logs.txt
 	done
 
@@ -224,26 +246,33 @@ function stopCaptures {
 	if [[ $yesno_securexl == 1 ]]; then
 		printf "Enabling SecureXL\n"
 		fwaccel on &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fwaccel on &> /dev/null" >> ~/logs.txt
 	else 
 		printf "Disabling SecureXL\n"
 		fwaccel off &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fwaccel off &> /dev/null" >> ~/logs.txt
 	fi
 
 	# If user specified a debug flag
 	if [[ "$1" == "-s"  ||  "$1" == "--sim-debug" ]]; then
 		fw ctl debug 0 &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl debug 0 &> /dev/null" >> ~/logs.txt
 		sim dbg resetall &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "sim dbg resetall &> /dev/null" >> ~/logs.txt
 		fwaccel dbg resetall &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fwaccel dbg resetall &> /dev/null" >> ~/logs.txt
 	elif [[ "$1" == "-i"  ||  "$1" == "--ips-debug" ]]; then
 		fw ctl debug 0 &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl debug 0 &> /dev/null" >> ~/logs.txt
 	elif [[ "$1" == "-a"  ||  "$1" == "--appi-debug" ]]; then
 		fw ctl debug 0 &> /dev/null
+		echo -n "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl debug 0 &> /dev/null" >> ~/logs.txt
 	fi
 }
