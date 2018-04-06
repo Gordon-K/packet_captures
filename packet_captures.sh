@@ -183,17 +183,6 @@ function startCaptures()
 	printf "| Commands ran for packet captures\n" >> ~/logs_"$(date +%m-%d-%Y)".txt
 	printf "===============================================\n" >> ~/logs_"$(date +%m-%d-%Y)".txt
 
-	printf "Starting Packet Captures...\n"
-	printf "Starting Ingress TCPdump on interface ${ingress}\n"
-	nohup tcpdump -s 0 -nnei ${ingress} -C 100 -W 10 -w ~/tcpdump-ingress.pcap -Z ${USER} >/dev/null 2>&1 &
-	printf "[ $(date) ] " >> ~/logs.txt
-	echo "nohup tcpdump -s 0 -nnei ${ingress} -C 100 -W 10 -w ~/tcpdump-ingress.pcap -Z ${USER} >/dev/null 2>&1 &" >> ~/logs.txt
-
-	printf "Starting Egress TCPdump on interface ${egress}\n"
-	nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} >/dev/null 2>&1 &
-	printf "[ $(date) ] " >> ~/logs.txt
-	echo "nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} >/dev/null 2>&1 &" >> ~/logs.txt
-
 	# if SecureXL is on turn it off
 	if [[ "$DBG_FLAG" == "S" ]]; then
 		printf "Enabling SecureXL\n"
@@ -217,6 +206,19 @@ function startCaptures()
 		printf "[ $(date) ] " >> ~/logs.txt
 		echo "fwaccel on &> /dev/null" >> ~/logs.txt
 	fi
+
+	sleep 1
+
+	printf "Starting Packet Captures...\n"
+	printf "Starting Ingress TCPdump on interface ${ingress}\n"
+	nohup tcpdump -s 0 -nnei ${ingress} -C 100 -W 10 -w ~/tcpdump-ingress.pcap -Z ${USER} >/dev/null 2>&1 &
+	printf "[ $(date) ] " >> ~/logs.txt
+	echo "nohup tcpdump -s 0 -nnei ${ingress} -C 100 -W 10 -w ~/tcpdump-ingress.pcap -Z ${USER} >/dev/null 2>&1 &" >> ~/logs.txt
+
+	printf "Starting Egress TCPdump on interface ${egress}\n"
+	nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} >/dev/null 2>&1 &
+	printf "[ $(date) ] " >> ~/logs.txt
+	echo "nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} >/dev/null 2>&1 &" >> ~/logs.txt
 
 	printf "Starting FW Monitor\n"
 	printf "[ $(date) ] " >> ~/logs.txt
@@ -292,6 +294,8 @@ function startCaptures()
 		printf "[ $(date) ] " >> ~/logs.txt
 		echo "fw ctl zdebug drop &> ~/zdebug.txt & &> /dev/null" >> ~/logs.txt
 	fi
+
+	printf ""
 
 	# Wait for the specified amout of time
 	sleep ${sleepTimer}s
