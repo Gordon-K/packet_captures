@@ -3,8 +3,8 @@
 # Kyle Gordon
 # HE T3 Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.4.0
-# Last Modified Mar 21, 2018
+# Version: 0.4.1
+# Last Modified Apr 06, 2018
 
 ###############################################################################
 # Help Screen
