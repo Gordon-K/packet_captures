@@ -3,7 +3,7 @@
 # Kyle Gordon
 # HE T3 Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.4.1
+# Version: 0.4.2
 # Last Modified Apr 06, 2018
 
 ###############################################################################
@@ -375,7 +375,7 @@ function cleanup()
 	rm ~/tcpdump-ingress* ~/tcpdump-egress* ~/fw_mon.pcap ~/zdebug.txt ~/logs.txt ~/*_debug ~/nohup.out &> /dev/null
 
 	printf "Files located in "
-	printf ~/packet_captures_"$(date +%m-%d-%Y_%H:%M:%S)".tgz
+	printf ~/packet_captures_"$(date +%m-%d-%Y_%H-%M-%S)".tgz
 	printf "\n"
 }
 
