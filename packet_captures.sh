@@ -3,8 +3,8 @@
 # Kyle Gordon
 # HE T3 Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.4.2
-# Last Modified Apr 06, 2018
+# Version: 0.4.3
+# Last Modified Apr 23, 2018
 
 ###############################################################################
 # Help Screen
@@ -36,7 +36,7 @@ Packet Capture Options:
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version 0.4.0 March 21, 2018
+Version 0.4.3 Apr 23, 2018
 "
 
 while getopts ":hvdaisSb" HELP_OPTION; do
