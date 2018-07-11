@@ -3,8 +3,8 @@
 # Kyle Gordon
 # HE T3 Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.4.3
-# Last Modified Apr 23, 2018
+# Version: 0.4.4
+# Last Modified Jul 11, 2018
 
 ###############################################################################
 # Help Screen
@@ -224,9 +224,9 @@ function startCaptures()
 	printf "[ $(date) ] " >> ~/logs.txt
 	printf "Starting FW Monitor\n" >> ~/logs.txt
 
-	nohup fw monitor -o ~/fw_mon.pcap >/dev/null 2>&1 &
+	nohup fw monitor -i -e "accept;" -o ~/fw_mon.pcap >/dev/null 2>&1 &
 	printf "[ $(date) ] " >> ~/logs.txt
-	echo "nohup fw monitor -o ~/fw_mon.pcap >/dev/null 2>&1 &" >> ~/logs.txt
+	echo "nohup fw monitor -i -e \"accept;\" -o ~/fw_mon.pcap >/dev/null 2>&1 &" >> ~/logs.txt
 
 	# If user specified a debug flag
 	if [[ "$DBG_FLAG" == "s" ]]; then
