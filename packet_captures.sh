@@ -1,10 +1,10 @@
 #!/bin/bash
 
 # Kyle Gordon
-# HE T3 Engineer
+# Diamond Services Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.4.4
-# Last Modified Jul 11, 2018
+# Version: 0.4.4.2
+# Last Modified Mar 12, 2019
 
 ###############################################################################
 # Help Screen
@@ -36,7 +36,7 @@ Packet Capture Options:
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version 0.4.3 Apr 23, 2018
+Version 0.4.4.1 Aug 20, 2018
 "
 
 while getopts ":hvdaisSb" HELP_OPTION; do
@@ -348,6 +348,8 @@ function stopCaptures()
 
 function cleanup()
 {
+	DATE=$(date +%m-%d-%Y_h%Hm%Ms%S)
+
 	printf "===============================================\n" >> ~/logs.txt
 	printf "| IPs Src and Dst\n" >> ~/logs.txt
 	printf "===============================================\n" >> ~/logs.txt
@@ -371,11 +373,11 @@ function cleanup()
 		echo "${1}" >> ~/logs.txt
 	fi
 
-	tar -zcvf ~/packet_captures_"$(date +%m-%d-%Y_%H:%M:%S)".tgz ~/tcpdump-ingress* ~/tcpdump-egress* ~/fw_mon.pcap ~/zdebug.txt ~/logs.txt ~/*_debug &> /dev/null
+	tar -zcvf ~/packet_captures_"$DATE".tgz ~/tcpdump-ingress* ~/tcpdump-egress* ~/fw_mon.pcap ~/zdebug.txt ~/logs.txt ~/*_debug &> /dev/null
 	rm ~/tcpdump-ingress* ~/tcpdump-egress* ~/fw_mon.pcap ~/zdebug.txt ~/logs.txt ~/*_debug ~/nohup.out &> /dev/null
 
 	printf "Files located in "
-	printf ~/packet_captures_"$(date +%m-%d-%Y_%H-%M-%S)".tgz
+	printf ~/packet_captures_"$DATE".tgz
 	printf "\n"
 }
 
