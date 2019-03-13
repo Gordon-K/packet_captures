@@ -36,7 +36,7 @@ Packet Capture Options:
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version 0.4.4.1 Aug 20, 2018
+Version 0.4.4.2 Mar 12, 2019
 "
 
 while getopts ":hvdaisSb" HELP_OPTION; do
