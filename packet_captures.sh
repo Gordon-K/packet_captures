@@ -3,67 +3,49 @@
 # Kyle Gordon
 # Diamond Services Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.4.4.2
-# Last Modified Mar 12, 2019
+# Version: 0.5.0
+# Last Modified May 06, 2019
 
 ###############################################################################
-# Help Screen
+# Help and Usage Information
 ###############################################################################
-HELP_USAGE="Usage: $0 [OPTIONS]
+HELP_USAGE="
+Usage: $0 [-s|--source <source IP>] [-s|--destination <destination IP>] [-p|--port <port>] [-t|--tcpdump] [-f|--fw_mon] [-zdebug|--zdebug]
 
-Miscellaneous:
-	-h    Display this help
-	-v    Version information
-	-d    Debug this script. a log file named 'script_debug.txt' will be
-        	created in the current working directory
-
-Packet Capture Options:
-	-a	appi debug	***THIS SHOULD BE DONE DURRING A MAINTENANCE WINDOW***
-			This debug should be used if you suspect Application Control is dropping traffic.
-			This can be the reason why traffic is dropping on an accept rule.
-
-	-i	ips debug		***THIS SHOULD BE DONE DURRING A MAINTENANCE WINDOW***
-	 		This debug should be used if you suspect IPS is dropping traffic.
-			This can be the reason why traffic is dropping on an accept rule.
-
-	-s	SecureXL debug	***THIS SHOULD BE DONE DURRING A MAINTENANCE WINDOW***
-
-	-S	This will force SecureXL to stay on during the debugs
-
-	-b	FW Module debug with flags: conn drop vm
 "
 
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version 0.4.4.2 Mar 12, 2019
+Version: 0.5.0 May 06, 2019
+
 "
+###############################################################################
+# Variables
+###############################################################################
+SOURCE_IP_LIST=()		# empty array
+DESTINATION_IP_LIST=()	# empty array
+PORT_LIST=()			# empty array
 
-while getopts ":hvdaisSb" HELP_OPTION; do
-	case "$HELP_OPTION" in
-		h) echo "$HELP_USAGE" ; exit ;;
-		v) echo "$HELP_VERSION" ; exit ;;
-		d) set -vx ; exec &> >(tee script_debug.txt) ;;
-		a) DBG_FLAG="a" ;;
-		i) DBG_FLAG="i" ;;
-		s) DBG_FLAG="s" ;;
-		S) DBG_FLAG="S" ;;
-		b) DBG_FLAG="b" ;;
-		\?) echo "Invalid option: -$OPTARG" >&2
-			echo "$HELP_USAGE" >&2 ; exit 1 ;;
-	esac
-done
-shift $(( OPTIND - 1 ))
+TRUE=1
+FALSE=0
 
-if [[ "$#" -gt "0" ]]; then
-	echo -e "Error: Illegal number of parameters\\n$HELP_USAGE"
-	exit 1
-fi
+RUN_TCPDUMP=$FALSE
+RUN_FW_MONITOR=$FALSE
+RUN_ZDEBUG=$FALSE
 
+ECHO="/bin/echo -e"
+SCRIPT_NAME=($(basename $0))
+DATE=$(date +%m-%d-%Y_h%Hm%Ms%S)
+
+LOGDIR="/var/log/tmp/packet_capture_script"
+LOGFILE="$LOGDIR/logs.txt"
+OUTPUTDIR="/var/log/tmp/packet_capture_script/outputs"
+OUTPUTFILE="$OUTPUTDIR/$SCRIPT_NAME_$DATE.tgz"
 ###############################################################################
 # Functions
 ###############################################################################
-function logo()
+function DisplayScriptLogo()
 {
 	clear
 	printf "    ____             __        __     ______            __                \n"
@@ -78,317 +60,508 @@ function logo()
 	printf "==========================================================================\n"
 }
 
-function getTestHost()
+function DisplayInteractiveMenu()
 {
-	# Create log file
-	touch ~/logs.txt
-	echo "" > ~/logs.txt
-	printf "===============================================\n" >> ~/logs.txt
-	printf "| User Input\n" >> ~/logs.txt
-	printf "===============================================\n" >> ~/logs.txt
-
-	printf "Enter Source IP address: "
-	read srcIP
-	printf "[ $(date) ] " >> ~/logs.txt
-	printf "Enter Source IP address: $srcIP\n" >> ~/logs.txt
-
-	printf "Enter Destination IP address: "
-	read dstIP
-	printf "[ $(date) ] " >> ~/logs.txt
-	printf "Enter Destination IP address: $dstIP\n" >> ~/logs.txt
-
-	printf "Please enter the amount of time in seconds that you would like these packet captures to run for: "
-	read sleepTimer
-	printf "[ $(date) ] " >> ~/logs.txt
-	printf "Please enter the amount of time in seconds that you would like these packet captures to run for: $sleepTimer\n" >> ~/logs.txt
-
-	printf "If any of the above fields are incorrect then press Ctrl+C to stop this script NOW!\n"
-	sleep 5s
+	echo "Interactive menu is a WIP..."
 }
 
-function findInterfaces()
+function InitializeLogs()
 {
-	findInterfacesCounter=0
+	# create log directory
+	printf "Creating log directory: $LOGDIR\n"
+	mkdir -p $LOGDIR
+	rm $LOGDIR/* 2>/dev/null
+	mkdir -p $OUTPUTDIR
 
-	for line in $(ifconfig -a | sed 's/[ \t].*//;/^$/d')
-	do
-		array[$findInterfacesCounter]=$line
-		findInterfacesCounter=$findInterfacesCounter+1
+	# create log file
+	touch $LOGDIR/logs.txt
+	printf "" > $LOGFILE
+	printf "===============================================\n" >> $LOGFILE
+	printf "| User Input\n" >> $LOGFILE
+	printf "===============================================\n" >> $LOGFILE
+}
+
+function GetDeviceInterfaces()
+{
+	NUMBER_OF_INTERFACES=0
+
+	for line in $(ifconfig -a | sed 's/[ \t].*//;/^$/d'); do
+		LIST_OF_INTERFACES[$NUMBER_OF_INTERFACES]=$line
+		NUMBER_OF_INTERFACES=$NUMBER_OF_INTERFACES+1
 	done
+}
 
-	for i in ${array[*]}
-	do
-		if [[ $(ip route get $srcIP) == *$i* ]]; then
-			ingress=$i
-			if [[ $ingress == "" ]]; then
-				printf "Script unable to find correct interface for IP $srcIP\n
-				Please enter the name of the interface that $srcIP should enter\n
-				the firewall on as it appears in the output of ifconfig\n
-				Interface Name: "
-				read ingress
-			fi
-		elif [[ $(ip route get $dstIP) == *$i* ]]; then
-			egress=$i
-			if [[ $egress == "" ]]; then
-				printf "Script unable to find correct interface for IP $dstIP\n
-				Please enter the name of the interface that $dstIP should enter\n
-				the firewall on as it appears in the output of ifconfig\n
-				Interface Name: "
-				read egress
-			fi
+function ParseUniqueInterfacesAndPorts()
+{
+	# array of interfaces to filter tcpdump capture with
+	USED_INTERFACES=()
+
+	if [ ${#SOURCE_IP_LIST[@]} -gt 0 ]; then
+		echo "Source IPs found!" >> $LOGFILE
+		for SOURCE_IP in ${SOURCE_IP_LIST[*]}; do
+			printf "$SOURCE_IP : " >> $LOGFILE
+			for INTERFACE in ${LIST_OF_INTERFACES[*]}; do
+				if [[ $(ip route get $SOURCE_IP) == *$INTERFACE* ]]; then
+					INTERFACE=$( echo "$INTERFACE" | sed 's/\..*$//'  ) # remove VLAN tags
+					printf "$INTERFACE\n" >> $LOGFILE
+					USED_INTERFACES+=("$INTERFACE")
+				fi
+			done
+		done
+	fi
+
+	if [ ${#DESTINATION_IP_LIST[@]} -gt 0 ]; then
+		echo "Destination IPs found!" >> $LOGFILE
+		for DESTINATION_IP in ${DESTINATION_IP_LIST[*]}; do
+			printf "$DESTINATION_IP : " >> $LOGFILE
+			for INTERFACE in ${LIST_OF_INTERFACES[*]}; do
+				if [[ $(ip route get $DESTINATION_IP) == *$INTERFACE* ]]; then
+					INTERFACE=$( echo "$INTERFACE" | sed 's/\..*$//'  ) # remove VLAN tags
+					printf "$INTERFACE\n" >> $LOGFILE
+					USED_INTERFACES+=("$INTERFACE")
+				fi
+			done
+		done
+	fi
+
+	# remove duplicates from USED_INTERFACES
+	TCPDUMP_UNIQUE_INTERFACES=($(echo "${USED_INTERFACES[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+
+	# array or ports to filter tcpdump capture with
+	USED_PORTS=()
+	if [ ${#PORT_LIST[@]} -gt 0 ]; then
+		echo "Ports found!" >> $LOGFILE
+		for PORT in ${PORT_LIST[*]}; do
+		echo "$PORT" >> $LOGFILE
+			USED_PORTS+=("$PORT")
+		done
+	fi
+
+	# remove duplicates from USED_PORTS
+	TCPDUMP_UNIQUE_PORTS=($(echo "${USED_PORTS[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+}
+
+function CreateTcpdumpSourceFilter()
+{ 
+	TcpdumpSourceFilter="(" # (
+	for i in `seq 0 ${#SOURCE_IP_LIST[@]}`; do
+		# first IP
+		if [ $i -eq 0 ]; then
+			TcpdumpSourceFilter=$TcpdumpSourceFilter"host ${SOURCE_IP_LIST[$i]}"
+			continue
 		fi
+		# last IP
+		if [ $i -eq ${#SOURCE_IP_LIST[@]} ]; then 
+			TcpdumpSourceFilter=$TcpdumpSourceFilter")" # )
+			break 
+		fi
+		TcpdumpSourceFilter=$TcpdumpSourceFilter" or host ${SOURCE_IP_LIST[$i]}"
 	done
-
-	printf "===============================================\n" >> ~/logs.txt
-	printf "| Interfaces\n" >> ~/logs.txt
-	printf "===============================================\n" >> ~/logs.txt
-	printf "Ingress interface is: $ingress\n"
-	printf "[ $(date) ] " >> ~/logs.txt
-	printf "Ingress interface is: $ingress\n" >> ~/logs.txt
-	printf "Egress interface is: $egress\n"
-	printf "[ $(date) ] " >> ~/logs.txt
-	printf "Egress interface is: $egress\n" >> ~/logs.txt
-	printf "If the interfaces above are incorrect the tcpdumps taken will be inaccurate\n"
-	sleep 5s
 }
 
-function checkSecureXL()
+function CreateTcpdumpDestinationFilter()
+{ 
+	TcpdumpDestinationFilter="(" # (
+	for i in `seq 0 ${#DESTINATION_IP_LIST[@]}`; do
+		# first IP
+		if [ $i -eq 0 ]; then
+			TcpdumpDestinationFilter=$TcpdumpDestinationFilter"host ${DESTINATION_IP_LIST[$i]}"
+			continue
+		fi
+		# last IP
+		if [ $i -eq ${#DESTINATION_IP_LIST[@]} ]; then 
+			TcpdumpDestinationFilter=$TcpdumpDestinationFilter")" # )
+			break 
+		fi
+		TcpdumpDestinationFilter=$TcpdumpDestinationFilter" or host ${DESTINATION_IP_LIST[$i]}"
+	done
+}
+
+function CreateTcpdumpPortFilter()
+{ 
+	TcpdumpPortFilter="(" # (
+	for i in `seq 0 ${#TCPDUMP_UNIQUE_PORTS[@]}`; do
+		# first IP
+		if [ $i -eq 0 ]; then
+			TcpdumpPortFilter=$TcpdumpPortFilter"port ${TCPDUMP_UNIQUE_PORTS[$i]}"
+			continue
+		fi
+		# last IP
+		if [ $i -eq ${#TCPDUMP_UNIQUE_PORTS[@]} ]; then 
+			TcpdumpPortFilter=$TcpdumpPortFilter")" # )
+			break 
+		fi
+		TcpdumpPortFilter=$TcpdumpPortFilter" or port ${TCPDUMP_UNIQUE_PORTS[$i]}"
+	done
+}
+
+function BuildTcpdumpSyntax()
 {
-	yesno_securexl=$(fwaccel stat | grep -E "Accelerator Status")
+	TCPDUMP_SYNTAX=()
 
-	printf "===============================================\n" >> ~/logs.txt
-	printf "| SecureXL Initial Status\n" >> ~/logs.txt
-	printf "===============================================\n" >> ~/logs.txt
-
-	if [[ $yesno_securexl == *"on"* ]]; then
-		printf "SecureXL is on\n"
-		printf "[ $(date) ] " >> ~/logs.txt
-		printf "SecureXL is on\n" >> ~/logs.txt
-		yesno_securexl=1
-		printf "[ $(date) ] " >> ~/logs.txt
-		printf "yesno_securexl = $yesno_securexl \n" >> ~/logs.txt
+	if [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#DESTINATION_IP_LIST[@]} -gt 0 ] &&  [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+		for UNIQUE_INTERFACE in ${TCPDUMP_UNIQUE_INTERFACES[*]}; do
+			TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei $UNIQUE_INTERFACE \"$TcpdumpSourceFilter and $TcpdumpDestinationFilter and $TcpdumpPortFilter\" -C 100 -W 10 -w $LOGDIR/tcpdump-$UNIQUE_INTERFACE.pcap -Z ${USER} >/dev/null 2>&1 &")
+		done
+	elif [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#DESTINATION_IP_LIST[@]} -gt 0 ]; then
+		for UNIQUE_INTERFACE in ${TCPDUMP_UNIQUE_INTERFACES[*]}; do
+			TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei $UNIQUE_INTERFACE \"$TcpdumpSourceFilter and $TcpdumpDestinationFilter\" -C 100 -W 10 -w $LOGDIR/tcpdump-$UNIQUE_INTERFACE.pcap -Z ${USER} >/dev/null 2>&1 &")
+		done
+	elif [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+		for UNIQUE_INTERFACE in ${TCPDUMP_UNIQUE_INTERFACES[*]}; do
+			TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei $UNIQUE_INTERFACE \"$TcpdumpSourceFilter and $TcpdumpPortFilter\" -C 100 -W 10 -w $LOGDIR/tcpdump-$UNIQUE_INTERFACE.pcap -Z ${USER} >/dev/null 2>&1 &")
+		done
+	elif [ ${#DESTINATION_IP_LIST[@]} -gt 0 ] && [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+		for UNIQUE_INTERFACE in ${TCPDUMP_UNIQUE_INTERFACES[*]}; do
+			TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei $UNIQUE_INTERFACE \"$TcpdumpDestinationFilter and $TcpdumpPortFilter\" -C 100 -W 10 -w $LOGDIR/tcpdump-$UNIQUE_INTERFACE.pcap -Z ${USER} >/dev/null 2>&1 &")
+		done
+	elif [ ${#SOURCE_IP_LIST[@]} -gt 0 ]; then
+		for UNIQUE_INTERFACE in ${TCPDUMP_UNIQUE_INTERFACES[*]}; do
+			TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei $UNIQUE_INTERFACE \"$TcpdumpSourceFilter\" -C 100 -W 10 -w $LOGDIR/tcpdump-$UNIQUE_INTERFACE.pcap -Z ${USER} >/dev/null 2>&1 &")
+		done	
+	elif [ ${#DESTINATION_IP_LIST[@]} -gt 0 ]; then
+		for UNIQUE_INTERFACE in ${TCPDUMP_UNIQUE_INTERFACES[*]}; do
+			TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei $UNIQUE_INTERFACE \"$TcpdumpDestinationFilter\" -C 100 -W 10 -w $LOGDIR/tcpdump-$UNIQUE_INTERFACE.pcap -Z ${USER} >/dev/null 2>&1 &")
+		done
+	elif [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+		# 'any' interface is used if only port is entered because there's no IP to get an interface from
+		#  this may be more intensive and should probably have a warning attached
+		#  TODO: add warning
+		TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei any \"$TcpdumpPortFilter\" -C 100 -W 10 -w $LOGDIR/tcpdump-ports.pcap -Z ${USER} >/dev/null 2>&1 &")
 	else
-		printf "SecureXL is off\n"
-		printf "[ $(date) ] " >> ~/logs.txt
-		printf "SecureXL is off\n" >> ~/logs.txt
-		yesno_securexl=0
-		printf "[ $(date) ] " >> ~/logs.txt
-		printf "yesno_securexl = $yesno_securexl \n" >> ~/logs.txt
+		for UNIQUE_INTERFACE in ${TCPDUMP_UNIQUE_INTERFACES[*]}; do
+			TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei $UNIQUE_INTERFACE -C 100 -W 10 -w $LOGDIR/tcpdump-$UNIQUE_INTERFACE.pcap -Z ${USER} >/dev/null 2>&1 &")
+		done
 	fi
 }
 
-function startCaptures()
+function RunTcpdumpCommands()
 {
-	printf "===============================================\n" >> ~/logs_"$(date +%m-%d-%Y)".txt
-	printf "| Commands ran for packet captures\n" >> ~/logs_"$(date +%m-%d-%Y)".txt
-	printf "===============================================\n" >> ~/logs_"$(date +%m-%d-%Y)".txt
-
-	# if SecureXL is on turn it off
-	if [[ "$DBG_FLAG" == "S" ]]; then
-		printf "Enabling SecureXL\n"
-		printf "[ $(date) ] " >> ~/logs.txt
-		printf "Enabling SecureXL\n" >> ~/logs.txt
-		fwaccel on &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fwaccel on &> /dev/null" >> ~/logs.txt
-	elif [[ ($yesno_securexl == 1 || $yesno_securexl == 0) && !("$DBG_FLAG" == "s") ]]; then
-		printf "Disabling SecureXL\n"
-		printf "[ $(date) ] " >> ~/logs.txt
-		printf "Disabling SecureXL\n" >> ~/logs.txt
-		fwaccel off &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fwaccel off &> /dev/null" >> ~/logs.txt
-	else
-		printf "Enabling SecureXL\n"
-		printf "[ $(date) ] " >> ~/logs.txt
-		printf "Enabling SecureXL\n" >> ~/logs.txt
-		fwaccel on &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fwaccel on &> /dev/null" >> ~/logs.txt
-	fi
-
-	sleep 1
-
-	printf "Starting Packet Captures...\n"
-	printf "Starting Ingress TCPdump on interface ${ingress}\n"
-	nohup tcpdump -s 0 -nnei ${ingress} -C 100 -W 10 -w ~/tcpdump-ingress.pcap -Z ${USER} >/dev/null 2>&1 &
-	printf "[ $(date) ] " >> ~/logs.txt
-	echo "nohup tcpdump -s 0 -nnei ${ingress} -C 100 -W 10 -w ~/tcpdump-ingress.pcap -Z ${USER} >/dev/null 2>&1 &" >> ~/logs.txt
-
-	printf "Starting Egress TCPdump on interface ${egress}\n"
-	nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} >/dev/null 2>&1 &
-	printf "[ $(date) ] " >> ~/logs.txt
-	echo "nohup tcpdump -s 0 -nnei ${egress} -C 100 -W 10 -w ~/tcpdump-egress.pcap -Z ${USER} >/dev/null 2>&1 &" >> ~/logs.txt
-
-	printf "Starting FW Monitor\n"
-	printf "[ $(date) ] " >> ~/logs.txt
-	printf "Starting FW Monitor\n" >> ~/logs.txt
-
-	nohup fw monitor -i -e "accept;" -o ~/fw_mon.pcap >/dev/null 2>&1 &
-	printf "[ $(date) ] " >> ~/logs.txt
-	echo "nohup fw monitor -i -e \"accept;\" -o ~/fw_mon.pcap >/dev/null 2>&1 &" >> ~/logs.txt
-
-	# If user specified a debug flag
-	if [[ "$DBG_FLAG" == "s" ]]; then
-		printf "Starting Sim Debug\n"
-		fw ctl debug 0 &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug 0" >> ~/logs.txt
-		fw ctl debug -buf 32000 &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug -buf 32000" >> ~/logs.txt
-		fw ctl debug -m fw + conn drop tcpstr vm &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug -m fw + conn drop tcpstr vm" >> ~/logs.txt
-		fwaccel dbg -m general + offload &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fwaccel dbg -m general + offload" >> ~/logs.txt
-		sim dbg -m pkt all &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "sim dbg -m pkt all" >> ~/logs.txt
-		fw ctl kdebug -T -f > ~/sim_debug & &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl kdebug -T -f > ~/sim_debug &" >> ~/logs.txt
-	elif [[ "$DBG_FLAG" == "i" ]]; then
-		fw ctl debug 0 &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug 0" >> ~/logs.txt
-		fw ctl debug -buf 32000 &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug -buf 32000" >> ~/logs.txt
-		fw ctl debug -m fw + conn drop tcpstr vm aspii spii cmi &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug -m fw + conn drop tcpstr vm aspii spii cmi" >> ~/logs.txt
-		fw ctl kdebug -T -f > ~/ips_debug & &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl kdebug -T -f > ~/ips_debug &" >> ~/logs.txt
-	elif [[ "$DBG_FLAG" == "a" ]]; then
-		fw ctl debug 0 &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug 0" >> ~/logs.txt
-		fw ctl debug -buf 32000 &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug -buf 32000" >> ~/logs.txt
-		fw ctl debug -m APPI all &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug -m APPI all &> /dev/null" >> ~/logs.txt
-		fw ctl kdebug -T -f > ~/appi_debug & &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl kdebug -T -f > ~/appi_debug &" >> ~/logs.txt
-	elif [[ "$DBG_FLAG" == "b" ]]; then
-		fw ctl debug 0 &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug 0" >> ~/logs.txt
-		fw ctl debug -buf 32000 &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug -buf 32000" >> ~/logs.txt
-		fw ctl debug -m fw + conn drop vm &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug -m fw + conn drop vm &> /dev/null" >> ~/logs.txt
-		fw ctl kdebug -T -f > ~/kernel_debug & &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl kdebug -T -f > ~/kernel_debug &" >> ~/logs.txt
-	else
-		printf "Starting Zdebug drop\n"
-		fw ctl zdebug drop &> ~/zdebug.txt & &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl zdebug drop &> ~/zdebug.txt & &> /dev/null" >> ~/logs.txt
-	fi
-
-	printf ""
-
-	# Wait for the specified amout of time
-	sleep ${sleepTimer}s
+	echo "Starting tcpdumps"
+	for i in "${TCPDUMP_SYNTAX[@]}"; do
+		eval $i # run command
+	done
 }
 
-function stopCaptures()
+function CreateFwMonitorSourceFilter()
+{ 
+	FwMonitorSourceFilter="("
+	for i in `seq 0 ${#SOURCE_IP_LIST[@]}`; do
+		# first IP
+		if [ $i -eq 0 ]; then
+			FwMonitorSourceFilter=$FwMonitorSourceFilter"host(${SOURCE_IP_LIST[$i]})"
+			continue
+		fi
+		# last IP
+		if [ $i -eq ${#SOURCE_IP_LIST[@]} ]; then 
+			FwMonitorSourceFilter=$FwMonitorSourceFilter")"
+			break 
+		fi
+		FwMonitorSourceFilter=$FwMonitorSourceFilter" or host(${SOURCE_IP_LIST[$i]})"
+	done
+}
+
+function CreateFwMonitorDestinationFilter()
+{ 
+	FwMonitorDestinationFilter="("
+	for i in `seq 0 ${#DESTINATION_IP_LIST[@]}`; do
+		# first IP
+		if [ $i -eq 0 ]; then
+			FwMonitorDestinationFilter=$FwMonitorDestinationFilter"host(${DESTINATION_IP_LIST[$i]})"
+			continue
+		fi
+		# last IP
+		if [ $i -eq ${#DESTINATION_IP_LIST[@]} ]; then 
+			FwMonitorDestinationFilter=$FwMonitorDestinationFilter")"
+			break 
+		fi
+		FwMonitorDestinationFilter=$FwMonitorDestinationFilter" or host(${DESTINATION_IP_LIST[$i]})"
+	done
+}
+
+function CreateFwMonitorPortFilter()
+{ 
+	FwMonitorPortFilter="("
+	for i in `seq 0 ${#TCPDUMP_UNIQUE_PORTS[@]}`; do
+		# first IP
+		if [ $i -eq 0 ]; then
+			FwMonitorPortFilter=$FwMonitorPortFilter"port(${TCPDUMP_UNIQUE_PORTS[$i]})"
+			continue
+		fi
+		# last IP
+		if [ $i -eq ${#TCPDUMP_UNIQUE_PORTS[@]} ]; then 
+			FwMonitorPortFilter=$FwMonitorPortFilter")"
+			break 
+		fi
+		FwMonitorPortFilter=$FwMonitorPortFilter" or port(${TCPDUMP_UNIQUE_PORTS[$i]})"
+	done
+}
+
+function BuildFwMonitorSyntax()
 {
-	for LINE in $(jobs -p)
-	do
+	FW_MONITOR_SYNTAX=()
+
+	if [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#DESTINATION_IP_LIST[@]} -gt 0 ] &&  [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorSourceFilter and $FwMonitorDestinationFilter and $FwMonitorPortFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
+	elif [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#DESTINATION_IP_LIST[@]} -gt 0 ]; then
+		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorSourceFilter and $FwMonitorDestinationFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
+	elif [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorSourceFilter and $FwMonitorPortFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
+	elif [ ${#DESTINATION_IP_LIST[@]} -gt 0 ] && [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorDestinationFilter and $FwMonitorPortFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
+	elif [ ${#SOURCE_IP_LIST[@]} -gt 0 ]; then
+		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorSourceFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")	
+	elif [ ${#DESTINATION_IP_LIST[@]} -gt 0 ]; then
+		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorDestinationFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
+	elif [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorPortFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
+	else
+		FW_MONITOR_SYNTAX+=("fw monitor -e \"accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
+	fi
+}
+
+function RunFwMonitorCommands()
+{
+	echo "Starting FW Monitor"
+	for i in "${FW_MONITOR_SYNTAX[@]}"; do
+		eval $i # run command
+	done
+}
+
+function BuildKernelDebugSyntax()
+{
+	KERNEL_DEBUG_SYNTAX=()
+
+	KERNEL_DEBUG_SYNTAX+=("fw ctl debug 0")
+	KERNEL_DEBUG_SYNTAX+=("fw ctl debug -buf 32768")
+	KERNEL_DEBUG_SYNTAX+=("fw ctl debug -m fw + drop")
+	KERNEL_DEBUG_SYNTAX+=("nohup fw ctl kdebug -f -o $LOGDIR/kdebug.txt -m 10 -s 100000 >/dev/null 2>&1 &")
+}
+
+function RunKernelDebugCommands()
+{
+	echo "Starting Kernel Debug"
+	for i in "${KERNEL_DEBUG_SYNTAX[@]}"; do
+		eval $i # run command
+	done
+}
+
+function StopCapturesAndDebugs()
+{
+	# kill all processes spawned by this script
+	for LINE in $(jobs -p); do
 		RIPid="$(ps aux | grep $LINE)"
 		kill ${LINE} >/dev/null 2>&1
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "kill ${LINE} - $RIPid" >> ~/logs.txt
 	done
 
-	# if SecureXL was off already leave it off
-	if [[ $yesno_securexl == 1 ]]; then
-		printf "Enabling SecureXL\n"
-		fwaccel on &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fwaccel on &> /dev/null" >> ~/logs.txt
-	else
-		printf "Disabling SecureXL\n"
-		fwaccel off &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fwaccel off &> /dev/null" >> ~/logs.txt
-	fi
-
-	# If user specified a debug flag
-	if [[ "$DBG_FLAG" == "s" ]]; then
-		fw ctl debug 0 &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug 0 &> /dev/null" >> ~/logs.txt
-		sim dbg resetall &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "sim dbg resetall &> /dev/null" >> ~/logs.txt
-		fwaccel dbg resetall &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fwaccel dbg resetall &> /dev/null" >> ~/logs.txt
-	elif [[ "$DBG_FLAG" == "i" ]]; then
-		fw ctl debug 0 &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug 0 &> /dev/null" >> ~/logs.txt
-	elif [[ "$DBG_FLAG" == "a" ]]; then
-		fw ctl debug 0 &> /dev/null
-		printf "[ $(date) ] " >> ~/logs.txt
-		echo "fw ctl debug 0 &> /dev/null" >> ~/logs.txt
-	fi
+	# remove all kernel debug flags
+	fw ctl debug 0
 }
 
-function cleanup()
+function ZipAndClean()
 {
-	DATE=$(date +%m-%d-%Y_h%Hm%Ms%S)
-
-	printf "===============================================\n" >> ~/logs.txt
-	printf "| IPs Src and Dst\n" >> ~/logs.txt
-	printf "===============================================\n" >> ~/logs.txt
-	printf "Src: ${srcIP}\n" >> ~/logs.txt
-	printf "Dst: ${dstIP}\n" >> ~/logs.txt
-	printf "===============================================\n" >> ~/logs.txt
-	printf "| How long were the packet captures taken for?\n" >> ~/logs.txt
-	printf "===============================================\n" >> ~/logs.txt
-	printf "${sleepTimer}s\n" >> ~/logs.txt
-	printf "===============================================\n" >> ~/logs.txt
-	printf "| What interfaces were the tcpdumps taken on?\n" >> ~/logs.txt
-	printf "===============================================\n" >> ~/logs.txt
-	printf "Ingress: ${ingress}\n" >> ~/logs.txt
-	printf "Egress:  ${egress}\n" >> ~/logs.txt
-
-	# If user specified a debug flag
-	if [[ $DBG_FLAG != "" ]]; then
-		printf "===============================================\n" >> ~/logs.txt
-		printf "| What debug flag was used?\n" >> ~/logs.txt
-		printf "===============================================\n" >> ~/logs.txt
-		echo "${1}" >> ~/logs.txt
-	fi
-
-	tar -zcvf ~/packet_captures_"$DATE".tgz ~/tcpdump-ingress* ~/tcpdump-egress* ~/fw_mon.pcap ~/zdebug.txt ~/logs.txt ~/*_debug &> /dev/null
-	rm ~/tcpdump-ingress* ~/tcpdump-egress* ~/fw_mon.pcap ~/zdebug.txt ~/logs.txt ~/*_debug ~/nohup.out &> /dev/null
-
-	printf "Files located in "
-	printf ~/packet_captures_"$DATE".tgz
-	printf "\n"
+	tar --exclude="$OUTPUTDIR" -zcvf $OUTPUTFILE $LOGDIR/*
+	rm $LOGDIR/* 2>/dev/null
+	DisplayScriptLogo
+	echo "File Location: $OUTPUTFILE"
+	echo "Check for updates at: https://github.com/Gordon-K/packet_captures"
 }
+###############################################################################
+# Argument handling
+###############################################################################
+# if script ran with no args 
+if [[ $# -eq 0 ]]; then
+	DisplayInteractiveMenu
+fi
 
+while [[ $# -gt 0 ]]; do
+	case "$1" in
+		-h | --help 		) 	# display help info
+								DisplayScriptLogo
+							  	echo "$HELP_USAGE"
+							  	exit 
+							  	;;
+		-v | --version  	) 	# display verison info
+								DisplayScriptLogo
+						  	  	echo "$HELP_VERSION"
+						  	  	exit 
+						  	  	;;
+		-s | --source		) 	# add one or more source IPs to filter captures by
+								SOURCE_IP_LIST+=( $2 )
+								shift
+								shift
+						  	  	;;
+		-d | --destination	) 	# add one or more destination IPs to filter captures by
+								DESTINATION_IP_LIST+=( $2 )
+								shift
+								shift
+						  	  	;;
+		-p | --port			) 	# add one or more ports to filter captures by
+								PORT_LIST+=( $2 )
+								shift
+								shift
+						  	  	;;
+		-t | --tcpdump		) 	# enable tcpdump
+								RUN_TCPDUMP="$TRUE"
+								shift
+						  	  	;;
+		-f | --fw_mon		) 	# enable FW Monitor
+								RUN_FW_MONITOR="$TRUE"
+								shift
+						  	  	;;
+		-zdebug | --zdebug	) 	# enable zdebug
+								# can't use -z cause it's reserved in bash
+								RUN_ZDEBUG="$TRUE"
+								shift
+						  	  	;;
+		* 					) 	# invalid arg used
+								echo "Invalid option: -$1" >&2
+								echo "$HELP_USAGE" >&2
+								exit 1 
+								;;
+	esac
+done
 ###############################################################################
 # Main
 ###############################################################################
-help $1
-logo
-getTestHost $1
-findInterfaces
-checkSecureXL
-startCaptures $1
-stopCaptures $1
-cleanup $1
+DisplayScriptLogo			# tell everyone who made this steaming pile of script
+InitializeLogs				# create $LOGDIR
+
+#
+# log information collected from user
+# information collected from args or interactive menu
+#
+
+# source IP logs
+if [ -z ${SOURCE_IP_LIST+x} ]; then 
+	echo "SOURCE_IP_LIST is empty" >> $LOGFILE
+else
+	counter=1
+	for i in "${SOURCE_IP_LIST[@]}"; do
+		echo "Source IP $counter : $i" >> $LOGFILE
+		counter=$(( counter + 1 ))
+	done
+	
+fi
+
+# destination IP logs
+if [ -z ${DESTINATION_IP_LIST+x} ]; then 
+	echo "DESTINATION_IP_LIST is empty" >> $LOGFILE
+else
+	counter=1
+	for i in "${DESTINATION_IP_LIST[@]}"; do
+		echo "Destination IP $counter : $i" >> $LOGFILE
+		counter=$(( counter + 1 ))		# increment counter
+	done
+fi
+
+# port logs
+if [ -z ${PORT_LIST+x} ]; then 
+	echo "PORT_LIST is empty" >> $LOGFILE
+else
+	counter=1
+	for i in "${PORT_LIST[@]}"; do
+		echo "Port $counter : $i" >> $LOGFILE
+		counter=$(( counter + 1 ))		# increment counter
+	done
+fi
+
+#
+# prep tcpdump
+#
+if [ $RUN_TCPDUMP ]; then
+	echo "RUN_TCPDUMP: $RUN_TCPDUMP" >> $LOGFILE
+
+	GetDeviceInterfaces
+	ParseUniqueInterfacesAndPorts
+
+	# confirm that there is an interface that leads to any of the IPs that were provided by the user
+	if [ -z ${TCPDUMP_UNIQUE_INTERFACES+x} ]; then 
+		echo "TCPDUMP_UNIQUE_INTERFACES is empty" >> $LOGFILE
+	else
+		counter=1
+		for i in "${TCPDUMP_UNIQUE_INTERFACES[@]}"; do
+			echo "TCPDUMP_UNIQUE_INTERFACES $counter : $i" >> $LOGFILE
+			counter=$(( counter + 1 ))		# increment counter
+		done
+		CreateTcpdumpSourceFilter
+		echo "TcpdumpSourceFilter: $TcpdumpSourceFilter"
+		CreateTcpdumpDestinationFilter
+		echo "TcpdumpDestinationFilter: $TcpdumpDestinationFilter"
+	fi
+
+	if [ -z ${TCPDUMP_UNIQUE_PORTS+x} ]; then 
+		echo "TCPDUMP_UNIQUE_PORTS is empty" >> $LOGFILE
+	else
+		counter=1
+		for i in "${TCPDUMP_UNIQUE_PORTS[@]}"; do
+			echo "TCPDUMP_UNIQUE_PORTS $counter : $i" >> $LOGFILE
+			counter=$(( counter + 1 ))		# increment counter
+		done
+		CreateTcpdumpPortFilter
+		echo "TcpdumpPortFilter: $TcpdumpPortFilter"
+	fi
+
+	BuildTcpdumpSyntax
+	echo "tcpdump syntax: "
+	for i in "${TCPDUMP_SYNTAX[@]}"; do
+		echo "$i"
+	done
+
+else
+	echo "RUN_TCPDUMP: $RUN_TCPDUMP" >> $LOGFILE
+fi
+
+#
+# prep fw monitor
+#
+if [ $RUN_FW_MONITOR ]; then
+	echo "RUN_FW_MONITOR: $RUN_FW_MONITOR" >> $LOGFILE
+
+	CreateFwMonitorSourceFilter
+	CreateFwMonitorDestinationFilter
+	CreateFwMonitorPortFilter
+	BuildFwMonitorSyntax
+
+	echo "FW Monitor syntax: "
+	for i in "${FW_MONITOR_SYNTAX[@]}"; do
+		echo "$i"
+	done
+else
+	echo "RUN_FW_MONITOR: $RUN_FW_MONITOR" >> $LOGFILE
+fi
+
+#
+# prep zdebug
+#
+if [ $RUN_ZDEBUG ]; then
+	echo "RUN_ZDEBUG: $RUN_ZDEBUG" >> $LOGFILE
+	BuildKernelDebugSyntax
+	echo "Kernel Debug syntax: "
+	for i in "${KERNEL_DEBUG_SYNTAX[@]}"; do
+		printf "$i\n"
+	done
+else
+	echo "RUN_ZDEBUG: $RUN_ZDEBUG" >> $LOGFILE
+fi
+
+#
+# start captures and debugs
+#
+RunTcpdumpCommands
+RunFwMonitorCommands
+RunKernelDebugCommands
+
+#
+# Prompt user to enter key to stop captures
+#
+DisplayScriptLogo
+echo "Captures/Debugs are running!"
+echo "Press any key to stop captures/debugs"
+read -n 1
+StopCapturesAndDebugs
+
+#
+# Cleanup
+#
+ZipAndClean
