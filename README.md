@@ -6,9 +6,4 @@ Script to assist with taking packet captures on Checkpoint GWs
   `dos2unix packet_captures.sh`  
   `chmod +x packet_captures.sh`  
   `./packet_captures.sh`  
-  Script can be run with the following flags:  
-  Help Menu: -h --help -help  
-  SIM debug: -s --sim-debug  
-  IPS debug: -i --ips-debug  
-  APPI debug: -a --appi-debug  
-3. Script will ask for Source and Destination IPs as well as a time in seconds to run
+Usage: ./script [-s|--source <source IP>] [-s|--destination <destination IP>] [-p|--port <port>] [-t|--tcpdump] [-f|--fw_mon] [-zdebug|--zdebug]  
