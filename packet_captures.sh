@@ -4,20 +4,27 @@
 # Diamond Services Engineer
 # Check Point Software Technologies Ltd.
 # Version: 0.5.1
-# Last Modified May 07, 2019
+# Last Modified May 08, 2019
 
 ###############################################################################
 # Help and Usage Information
 ###############################################################################
 HELP_USAGE="
-Usage: $0 [-s|--source <source IP>] [-s|--destination <destination IP>] [-p|--port <port>] [-t|--tcpdump] [-f|--fw_mon] [-k|--kernel_debug]
+Usage: $0 [-s <source IP>] [-d <destination IP>] [-p <port>] [-t] [-f] [-k]
 
+Flags:
+  [ -s ] : Used to specify source IP for filtering tcpdump and FW Monitor captures. Multiple source IPs can be entered, each IP must be entered in [-s <source IP>] format
+  [ -d ] : Used to specify destination IP for filtering tcpdump and FW Monitor captures. Multiple destination IPs can be entered, each IP must be entered in [-d <destination IP>] format
+  [ -p ] : Used to specify port for filtering tcpdump and FW Monitor captures. Multiple ports can be entered, each port must be entered in [-p <port>] format
+  [ -t ] : Tells script to take a tcpdump on all relevent interfaces based on IPs provided with -s and -d flags. Tcpdump will be filtered according to source IP(s), dedstination IP(s), and port(s) provided to script.
+  [ -f ] : Tells script to take a FW Monitor capture. SecureXL will be disabled for captures on versions R77.30 and below. FW Monitor will be filtered according to source IP(s), dedstination IP(s), and port(s) provided to script.
+  [ -k ] : Tells script to take Kernel Debugs. Currently script defaults to '-m fw + drop' kernel debug. This is the same as running 'fw ctl zdebug drop'.
 "
 
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version: 0.5.1 May 07, 2019
+Version: 0.5.1 May 08, 2019
 
 "
 ###############################################################################
@@ -36,6 +43,7 @@ RUN_KDEBUG=$FALSE
 
 SHELL="[Expert@$HOSTNAME:$INSTANCE_VSID]#"
 DATE=$(date +%m-%d-%Y_h%Hm%Ms%S)
+MAJOR_VERSION=$(fw ver | awk '{print $7}' | sed 's/\..*//')
 
 LOGDIR="/var/log/tmp/packet_capture_script"
 LOGFILE="$LOGDIR/logs.txt"
@@ -323,26 +331,21 @@ function BuildFwMonitorSyntax()
 # working on this
 function CheckSecureXLStatus()
 {
-	yesno_securexl=$(fwaccel stat | grep -E "Accelerator Status")
+	SecureXLEnabled=$(fwaccel stat | grep -E "Accelerator Status")
 
-	printf "===============================================\n" >> ~/logs.txt
-	printf "| SecureXL Initial Status\n" >> ~/logs.txt
-	printf "===============================================\n" >> ~/logs.txt
-
-	if [[ $yesno_securexl == *"on"* ]]; then
-		printf "SecureXL is on\n"
-		printf "[ $(date) ] " >> ~/logs.txt
-		printf "SecureXL is on\n" >> ~/logs.txt
-		yesno_securexl=1
-		printf "[ $(date) ] " >> ~/logs.txt
-		printf "yesno_securexl = $yesno_securexl \n" >> ~/logs.txt
+	if [[ $SecureXLEnabled == *"on"* ]]; then
+		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
+		printf "SecureXL is on\n" | tee -a $LOGFILE
+		SecureXLEnabled=$TRUE
+		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
+		printf "SecureXLEnabled: $SecureXLEnabled \n" >> $LOGFILE
 	else
 		printf "SecureXL is off\n"
-		printf "[ $(date) ] " >> ~/logs.txt
-		printf "SecureXL is off\n" >> ~/logs.txt
-		yesno_securexl=0
-		printf "[ $(date) ] " >> ~/logs.txt
-		printf "yesno_securexl = $yesno_securexl \n" >> ~/logs.txt
+		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
+		printf "SecureXL is off\n" | tee -a $LOGFILE
+		SecureXLEnabled=$FALSE
+		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
+		printf "SecureXLEnabled: $SecureXLEnabled \n" >> $LOGFILE
 	fi
 }
 
@@ -380,17 +383,26 @@ function StopCapturesAndDebugs()
 		kill ${LINE} >/dev/null 2>&1
 	done
 
+	# check if SecureXL needs to be enabled again or not
+	if [ "$MAJOR_VERSION" != "R80" ] && [ "$SecureXLEnabled" -eq "$TRUE" ];then
+		echo "Enabling SecureXL" | tee -a $LOGFILE
+		fwaccel on
+	else
+		echo "SecureXL disabled when script started, leaving it that way" | tee -a $LOGFILE
+	fi
+
 	# remove all kernel debug flags
 	fw ctl debug 0
 }
 
 function ZipAndClean()
 {
-	tar --exclude="$OUTPUTDIR" -zcvf $OUTPUTFILE $LOGDIR/*
+	echo "Creating tarball and cleaning up after myself..." | tee -a $LOGFILE
+	cd $LOGDIR && tar --exclude='./outputs' -zcvf $OUTPUTFILE .
 	rm $LOGDIR/* 2>/dev/null
-	DisplayScriptLogo
+	echo ""
 	echo "File Location: $OUTPUTFILE"
-	echo "Check for updates at: https://github.com/Gordon-K/packet_captures"
+	echo "Check for updates to this script at: https://github.com/Gordon-K/packet_captures"
 }
 ###############################################################################
 # Argument handling
@@ -440,7 +452,6 @@ while [[ $# -gt 0 ]]; do
 								shift
 						  	  	;;
 		-k | --kernel_debug	) 	# enable kernel debug
-								# will replace '-zdebug | --zdebug'
 								RUN_KDEBUG="$TRUE"
 								shift
 						  	  	;;
@@ -601,14 +612,31 @@ if [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
 	RunKernelDebugCommands # start kernel debug first cause it takes longest to get up and running
 fi
 
+if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
+
+	if [ "$MAJOR_VERSION" != "R80"  ];then
+		echo "SecureXL does need to be disabled for FW Monitor, checking status" | tee -a $LOGFILE
+		echo "MAJOR_VERSION: $MAJOR_VERSION" >> $LOGFILE
+		CheckSecureXLStatus
+
+		if [ "$SecureXLEnabled" -eq "$TRUE" ]; then
+			echo "Disabling SecureXL" | tee -a $LOGFILE
+			fwaccel off
+		else
+			echo "SecureXL already disabled, leaving it that way" | tee -a $LOGFILE
+		fi
+	else
+		echo "SecureXL does not need to be disabled for FW Monitor, skipping check" | tee -a $LOGFILE
+		echo "MAJOR_VERSION: $MAJOR_VERSION" >> $LOGFILE
+	fi
+
+	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Starting FW Monitor:" >> $LOGFILE
+	RunFwMonitorCommands
+fi
+
 if [ "$RUN_TCPDUMP" -eq "$TRUE" ]; then
 	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Starting tcpdump:" >> $LOGFILE
 	RunTcpdumpCommands
-fi
-
-if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
-	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Starting FW Monitor:" >> $LOGFILE
-	RunFwMonitorCommands
 fi
 
 #
@@ -619,8 +647,10 @@ if [ "$RUN_TCPDUMP" -eq "$TRUE" ] || [ "$RUN_FW_MONITOR" -eq "$TRUE" ] || [ "$RU
 	echo "Captures/Debugs are running!"
 	echo "Press any key to stop captures/debugs"
 	read -n 1
+	echo "" # blank line to make things look nicer when pressing any key
+	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Stopping Captures/Debugs..." | tee -a $LOGFILE
 	StopCapturesAndDebugs
-	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Captures/Debugs Stopped:" >> $LOGFILE
+	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Captures/Debugs Stopped" | tee -a $LOGFILE
 fi
 
 #
