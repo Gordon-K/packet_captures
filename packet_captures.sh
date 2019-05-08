@@ -3,21 +3,28 @@
 # Kyle Gordon
 # Diamond Services Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.5.0
-# Last Modified May 06, 2019
+# Version: 0.5.1
+# Last Modified May 08, 2019
 
 ###############################################################################
 # Help and Usage Information
 ###############################################################################
 HELP_USAGE="
-Usage: $0 [-s|--source <source IP>] [-s|--destination <destination IP>] [-p|--port <port>] [-t|--tcpdump] [-f|--fw_mon] [-zdebug|--zdebug]
+Usage: $0 [-s <source IP>] [-d <destination IP>] [-p <port>] [-t] [-f] [-k]
 
+Flags:
+  [ -s ] : Used to specify source IP for filtering tcpdump and FW Monitor captures. Multiple source IPs can be entered, each IP must be entered in [-s <source IP>] format
+  [ -d ] : Used to specify destination IP for filtering tcpdump and FW Monitor captures. Multiple destination IPs can be entered, each IP must be entered in [-d <destination IP>] format
+  [ -p ] : Used to specify port for filtering tcpdump and FW Monitor captures. Multiple ports can be entered, each port must be entered in [-p <port>] format
+  [ -t ] : Tells script to take a tcpdump on all relevent interfaces based on IPs provided with -s and -d flags. Tcpdump will be filtered according to source IP(s), dedstination IP(s), and port(s) provided to script.
+  [ -f ] : Tells script to take a FW Monitor capture. SecureXL will be disabled for captures on versions R77.30 and below. FW Monitor will be filtered according to source IP(s), dedstination IP(s), and port(s) provided to script.
+  [ -k ] : Tells script to take Kernel Debugs. Currently script defaults to '-m fw + drop' kernel debug. This is the same as running 'fw ctl zdebug drop'.
 "
 
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version: 0.5.0 May 06, 2019
+Version: 0.5.1 May 08, 2019
 
 "
 ###############################################################################
@@ -32,11 +39,11 @@ FALSE=0
 
 RUN_TCPDUMP=$FALSE
 RUN_FW_MONITOR=$FALSE
-RUN_ZDEBUG=$FALSE
+RUN_KDEBUG=$FALSE
 
-ECHO="/bin/echo -e"
-SCRIPT_NAME=($(basename $0))
+SHELL="[Expert@$HOSTNAME:$INSTANCE_VSID]#"
 DATE=$(date +%m-%d-%Y_h%Hm%Ms%S)
+MAJOR_VERSION=$(fw ver | awk '{print $7}' | sed 's/\..*//')
 
 LOGDIR="/var/log/tmp/packet_capture_script"
 LOGFILE="$LOGDIR/logs.txt"
@@ -62,6 +69,7 @@ function DisplayScriptLogo()
 
 function DisplayInteractiveMenu()
 {
+	# this will eventually get added
 	echo "Interactive menu is a WIP..."
 }
 
@@ -320,6 +328,27 @@ function BuildFwMonitorSyntax()
 	fi
 }
 
+# working on this
+function CheckSecureXLStatus()
+{
+	SecureXLEnabled=$(fwaccel stat | grep -E "Accelerator Status")
+
+	if [[ $SecureXLEnabled == *"on"* ]]; then
+		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
+		printf "SecureXL is on\n" | tee -a $LOGFILE
+		SecureXLEnabled=$TRUE
+		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
+		printf "SecureXLEnabled: $SecureXLEnabled \n" >> $LOGFILE
+	else
+		printf "SecureXL is off\n"
+		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
+		printf "SecureXL is off\n" | tee -a $LOGFILE
+		SecureXLEnabled=$FALSE
+		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
+		printf "SecureXLEnabled: $SecureXLEnabled \n" >> $LOGFILE
+	fi
+}
+
 function RunFwMonitorCommands()
 {
 	echo "Starting FW Monitor"
@@ -354,24 +383,37 @@ function StopCapturesAndDebugs()
 		kill ${LINE} >/dev/null 2>&1
 	done
 
+	# check if SecureXL needs to be enabled again or not
+	if [ "$MAJOR_VERSION" != "R80" ] && [ "$SecureXLEnabled" -eq "$TRUE" ];then
+		echo "Enabling SecureXL" | tee -a $LOGFILE
+		fwaccel on
+	else
+		echo "SecureXL disabled when script started, leaving it that way" | tee -a $LOGFILE
+	fi
+
 	# remove all kernel debug flags
 	fw ctl debug 0
 }
 
 function ZipAndClean()
 {
-	tar --exclude="$OUTPUTDIR" -zcvf $OUTPUTFILE $LOGDIR/*
+	echo "Creating tarball and cleaning up after myself..." | tee -a $LOGFILE
+	cd $LOGDIR && tar --exclude='./outputs' -zcvf $OUTPUTFILE .
 	rm $LOGDIR/* 2>/dev/null
-	DisplayScriptLogo
+	echo ""
 	echo "File Location: $OUTPUTFILE"
-	echo "Check for updates at: https://github.com/Gordon-K/packet_captures"
+	echo "Check for updates to this script at: https://github.com/Gordon-K/packet_captures"
 }
 ###############################################################################
 # Argument handling
 ###############################################################################
 # if script ran with no args 
 if [[ $# -eq 0 ]]; then
-	DisplayInteractiveMenu
+	DisplayScriptLogo
+	echo "$HELP_VERSION"
+	echo "$HELP_USAGE"
+	exit
+	# DisplayInteractiveMenu
 fi
 
 while [[ $# -gt 0 ]]; do
@@ -409,9 +451,8 @@ while [[ $# -gt 0 ]]; do
 								RUN_FW_MONITOR="$TRUE"
 								shift
 						  	  	;;
-		-zdebug | --zdebug	) 	# enable zdebug
-								# can't use -z cause it's reserved in bash
-								RUN_ZDEBUG="$TRUE"
+		-k | --kernel_debug	) 	# enable kernel debug
+								RUN_KDEBUG="$TRUE"
 								shift
 						  	  	;;
 		* 					) 	# invalid arg used
@@ -424,8 +465,8 @@ done
 ###############################################################################
 # Main
 ###############################################################################
-DisplayScriptLogo			# tell everyone who made this steaming pile of script
-InitializeLogs				# create $LOGDIR
+DisplayScriptLogo				# tell everyone who made this steaming pile of script
+InitializeLogs					# create $LOGDIR
 
 #
 # log information collected from user
@@ -433,6 +474,9 @@ InitializeLogs				# create $LOGDIR
 #
 
 # source IP logs
+printf "\n================================\n" >> $LOGFILE
+printf "| Source IPs Entered           |\n" >> $LOGFILE
+printf "================================\n" >> $LOGFILE
 if [ -z ${SOURCE_IP_LIST+x} ]; then 
 	echo "SOURCE_IP_LIST is empty" >> $LOGFILE
 else
@@ -445,6 +489,9 @@ else
 fi
 
 # destination IP logs
+printf "\n================================\n" >> $LOGFILE
+printf "| Destination IPs Entered      |\n" >> $LOGFILE
+printf "================================\n" >> $LOGFILE
 if [ -z ${DESTINATION_IP_LIST+x} ]; then 
 	echo "DESTINATION_IP_LIST is empty" >> $LOGFILE
 else
@@ -456,6 +503,9 @@ else
 fi
 
 # port logs
+printf "\n================================\n" >> $LOGFILE
+printf "| Ports Entered                |\n" >> $LOGFILE
+printf "================================\n" >> $LOGFILE
 if [ -z ${PORT_LIST+x} ]; then 
 	echo "PORT_LIST is empty" >> $LOGFILE
 else
@@ -469,7 +519,10 @@ fi
 #
 # prep tcpdump
 #
-if [ $RUN_TCPDUMP ]; then
+printf "\n================================\n" >> $LOGFILE
+printf "| tcpdump                      |\n" >> $LOGFILE
+printf "================================\n" >> $LOGFILE
+if [ "$RUN_TCPDUMP" -eq "$TRUE" ]; then
 	echo "RUN_TCPDUMP: $RUN_TCPDUMP" >> $LOGFILE
 
 	GetDeviceInterfaces
@@ -485,9 +538,9 @@ if [ $RUN_TCPDUMP ]; then
 			counter=$(( counter + 1 ))		# increment counter
 		done
 		CreateTcpdumpSourceFilter
-		echo "TcpdumpSourceFilter: $TcpdumpSourceFilter"
+		echo "TcpdumpSourceFilter: $TcpdumpSourceFilter" >> $LOGFILE
 		CreateTcpdumpDestinationFilter
-		echo "TcpdumpDestinationFilter: $TcpdumpDestinationFilter"
+		echo "TcpdumpDestinationFilter: $TcpdumpDestinationFilter" >> $LOGFILE
 	fi
 
 	if [ -z ${TCPDUMP_UNIQUE_PORTS+x} ]; then 
@@ -499,13 +552,13 @@ if [ $RUN_TCPDUMP ]; then
 			counter=$(( counter + 1 ))		# increment counter
 		done
 		CreateTcpdumpPortFilter
-		echo "TcpdumpPortFilter: $TcpdumpPortFilter"
+		echo "TcpdumpPortFilter: $TcpdumpPortFilter" >> $LOGFILE
 	fi
 
 	BuildTcpdumpSyntax
-	echo "tcpdump syntax: "
+	echo "tcpdump syntax: " >> $LOGFILE
 	for i in "${TCPDUMP_SYNTAX[@]}"; do
-		echo "$i"
+		echo "$SHELL $i" >> $LOGFILE
 	done
 
 else
@@ -515,7 +568,10 @@ fi
 #
 # prep fw monitor
 #
-if [ $RUN_FW_MONITOR ]; then
+printf "\n================================\n" >> $LOGFILE
+printf "| FW Monitor                   |\n" >> $LOGFILE
+printf "================================\n" >> $LOGFILE
+if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
 	echo "RUN_FW_MONITOR: $RUN_FW_MONITOR" >> $LOGFILE
 
 	CreateFwMonitorSourceFilter
@@ -523,9 +579,9 @@ if [ $RUN_FW_MONITOR ]; then
 	CreateFwMonitorPortFilter
 	BuildFwMonitorSyntax
 
-	echo "FW Monitor syntax: "
+	echo "FW Monitor syntax: " >> $LOGFILE
 	for i in "${FW_MONITOR_SYNTAX[@]}"; do
-		echo "$i"
+		echo "$SHELL $i" >> $LOGFILE
 	done
 else
 	echo "RUN_FW_MONITOR: $RUN_FW_MONITOR" >> $LOGFILE
@@ -534,34 +590,73 @@ fi
 #
 # prep zdebug
 #
-if [ $RUN_ZDEBUG ]; then
-	echo "RUN_ZDEBUG: $RUN_ZDEBUG" >> $LOGFILE
+printf "\n================================\n" >> $LOGFILE
+printf "| Kernel Debug                 |\n" >> $LOGFILE
+printf "================================\n" >> $LOGFILE
+if [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
+	echo "RUN_KDEBUG: $RUN_KDEBUG" >> $LOGFILE
 	BuildKernelDebugSyntax
-	echo "Kernel Debug syntax: "
+	echo "Kernel Debug syntax: " >> $LOGFILE
 	for i in "${KERNEL_DEBUG_SYNTAX[@]}"; do
-		printf "$i\n"
+		printf "$SHELL $i\n" >> $LOGFILE
 	done
 else
-	echo "RUN_ZDEBUG: $RUN_ZDEBUG" >> $LOGFILE
+	echo "RUN_KDEBUG: $RUN_KDEBUG" >> $LOGFILE
 fi
 
 #
 # start captures and debugs
 #
-RunTcpdumpCommands
-RunFwMonitorCommands
-RunKernelDebugCommands
+if [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
+	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Starting Kernel Debug:" >> $LOGFILE
+	RunKernelDebugCommands # start kernel debug first cause it takes longest to get up and running
+fi
+
+if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
+
+	if [ "$MAJOR_VERSION" != "R80"  ];then
+		echo "SecureXL does need to be disabled for FW Monitor, checking status" | tee -a $LOGFILE
+		echo "MAJOR_VERSION: $MAJOR_VERSION" >> $LOGFILE
+		CheckSecureXLStatus
+
+		if [ "$SecureXLEnabled" -eq "$TRUE" ]; then
+			echo "Disabling SecureXL" | tee -a $LOGFILE
+			fwaccel off
+		else
+			echo "SecureXL already disabled, leaving it that way" | tee -a $LOGFILE
+		fi
+	else
+		echo "SecureXL does not need to be disabled for FW Monitor, skipping check" | tee -a $LOGFILE
+		echo "MAJOR_VERSION: $MAJOR_VERSION" >> $LOGFILE
+	fi
+
+	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Starting FW Monitor:" >> $LOGFILE
+	RunFwMonitorCommands
+fi
+
+if [ "$RUN_TCPDUMP" -eq "$TRUE" ]; then
+	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Starting tcpdump:" >> $LOGFILE
+	RunTcpdumpCommands
+fi
 
 #
-# Prompt user to enter key to stop captures
+# prompt user to enter key to stop captures
+#  this only runs if a capture or debug has been set to run
 #
-DisplayScriptLogo
-echo "Captures/Debugs are running!"
-echo "Press any key to stop captures/debugs"
-read -n 1
-StopCapturesAndDebugs
+if [ "$RUN_TCPDUMP" -eq "$TRUE" ] || [ "$RUN_FW_MONITOR" -eq "$TRUE" ] || [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
+	echo "Captures/Debugs are running!"
+	echo "Press any key to stop captures/debugs"
+	read -n 1
+	echo "" # blank line to make things look nicer when pressing any key
+	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Stopping Captures/Debugs..." | tee -a $LOGFILE
+	StopCapturesAndDebugs
+	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Captures/Debugs Stopped" | tee -a $LOGFILE
+fi
 
 #
-# Cleanup
+# cleanup
+#  no point in running this if a capture was not taken
 #
-ZipAndClean
+if [ "$RUN_TCPDUMP" -eq "$TRUE" ] || [ "$RUN_FW_MONITOR" -eq "$TRUE" ] || [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
+	ZipAndClean
+fi
