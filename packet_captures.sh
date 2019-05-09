@@ -25,26 +25,31 @@ HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
 Version: 0.5.1 May 08, 2019
+Check for updates to this script at: https://github.com/Gordon-K/packet_captures
 
 "
 ###############################################################################
 # Variables
 ###############################################################################
+# empty arrays to be filled in with user input
 SOURCE_IP_LIST=()		# empty array
 DESTINATION_IP_LIST=()	# empty array
 PORT_LIST=()			# empty array
 
+# to be or not to be
 TRUE=1
 FALSE=0
 
+# so we know to run captures/debugs or not
 RUN_TCPDUMP=$FALSE
 RUN_FW_MONITOR=$FALSE
 RUN_KDEBUG=$FALSE
 
 SHELL="[Expert@$HOSTNAME:$INSTANCE_VSID]#"
 DATE=$(date +%m-%d-%Y_h%Hm%Ms%S)
-MAJOR_VERSION=$(fw ver | awk '{print $7}' | sed 's/\..*//')
+MAJOR_VERSION=$(fw ver | awk '{print $7}')
 
+# directories and file locations
 LOGDIR="/var/log/tmp/packet_capture_script"
 LOGFILE="$LOGDIR/logs.txt"
 OUTPUTDIR="/var/log/tmp/packet_capture_script/outputs"
@@ -340,7 +345,6 @@ function CheckSecureXLStatus()
 		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
 		printf "SecureXLEnabled: $SecureXLEnabled \n" >> $LOGFILE
 	else
-		printf "SecureXL is off\n"
 		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
 		printf "SecureXL is off\n" | tee -a $LOGFILE
 		SecureXLEnabled=$FALSE
@@ -359,11 +363,15 @@ function RunFwMonitorCommands()
 
 function BuildKernelDebugSyntax()
 {
+	# syntax for all kernel debug commands that will be run
 	KERNEL_DEBUG_SYNTAX=()
 
+	# add the following lines to the syntax for all kernel debug commands that will be run
 	KERNEL_DEBUG_SYNTAX+=("fw ctl debug 0")
 	KERNEL_DEBUG_SYNTAX+=("fw ctl debug -buf 32768")
+
 	KERNEL_DEBUG_SYNTAX+=("fw ctl debug -m fw + drop")
+
 	KERNEL_DEBUG_SYNTAX+=("nohup fw ctl kdebug -f -o $LOGDIR/kdebug.txt -m 10 -s 100000 >/dev/null 2>&1 &")
 }
 
@@ -384,7 +392,7 @@ function StopCapturesAndDebugs()
 	done
 
 	# check if SecureXL needs to be enabled again or not
-	if [ "$MAJOR_VERSION" != "R80" ] && [ "$SecureXLEnabled" -eq "$TRUE" ];then
+	if ([ "$MAJOR_VERSION" != "R80.20" ] || [ "$MAJOR_VERSION" != "R80.30" ]) && [ "$SecureXLEnabled" -eq "$TRUE" ];then
 		echo "Enabling SecureXL" | tee -a $LOGFILE
 		fwaccel on
 	else
@@ -466,6 +474,10 @@ done
 # Main
 ###############################################################################
 DisplayScriptLogo				# tell everyone who made this steaming pile of script
+if [ "$RUN_TCPDUMP" -eq "$FALSE" ] && [ "$RUN_FW_MONITOR" -eq "$FALSE" ] && [ "$RUN_KDEBUG" -eq "$FALSE" ]; then
+	echo "No capture or debug was selected, please run the script with one of the following flags: -t, -f, -k"
+	exit
+fi
 InitializeLogs					# create $LOGDIR
 
 #
@@ -614,7 +626,7 @@ fi
 
 if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
 
-	if [ "$MAJOR_VERSION" != "R80"  ];then
+	if [ "$MAJOR_VERSION" != "R80.20" ] || [ "$MAJOR_VERSION" != "R80.30" ];then
 		echo "SecureXL does need to be disabled for FW Monitor, checking status" | tee -a $LOGFILE
 		echo "MAJOR_VERSION: $MAJOR_VERSION" >> $LOGFILE
 		CheckSecureXLStatus
