@@ -46,6 +46,7 @@ RUN_TCPDUMP=$FALSE
 RUN_FW_MONITOR=$FALSE
 RUN_KDEBUG=$FALSE
 
+SCRIPT_NAME=($(basename $0))
 SHELL="[Expert@$HOSTNAME:$INSTANCE_VSID]#"
 DATE=$(date +%m-%d-%Y_h%Hm%Ms%S)
 MAJOR_VERSION=$(fw ver | awk '{print $7}')
