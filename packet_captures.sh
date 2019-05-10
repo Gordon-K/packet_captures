@@ -4,7 +4,7 @@
 # Diamond Services Engineer
 # Check Point Software Technologies Ltd.
 # Version: 0.5.2
-# Last Modified May 08, 2019
+# Last Modified May 10, 2019
 
 ###############################################################################
 # Help and Usage Information
@@ -18,13 +18,13 @@ Flags:
   [ -p ] : Used to specify port for filtering tcpdump and FW Monitor captures. Multiple ports can be entered, each port must be entered in [-p <port>] format
   [ -t ] : Tells script to take a tcpdump on all relevent interfaces based on IPs provided with -s and -d flags. Tcpdump will be filtered according to source IP(s), dedstination IP(s), and port(s) provided to script.
   [ -f ] : Tells script to take a FW Monitor capture. SecureXL will be disabled for captures on versions R77.30 and below. FW Monitor will be filtered according to source IP(s), dedstination IP(s), and port(s) provided to script.
-  [ -k ] : Tells script to take Kernel Debugs. Currently script defaults to '-m fw + drop' kernel debug. This is the same as running 'fw ctl zdebug drop'.
+  [ -k ] : Tells script to take Kernel Debugs. Entering only -k flag will default to debugging the fw module with the drop flag (fw ctl debug -m fw + drop). You can select the module and flags that you want to debug by running the -k flag followed by the module and flags in double-quotes like so: -k \"-m fw + drop\".
 "
 
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version: 0.5.2 May 08, 2019
+Version: 0.5.2 May 10, 2019
 Check for updates to this script at: https://github.com/Gordon-K/packet_captures
 
 "
@@ -32,9 +32,10 @@ Check for updates to this script at: https://github.com/Gordon-K/packet_captures
 # Variables
 ###############################################################################
 # empty arrays to be filled in with user input
-SOURCE_IP_LIST=()		# empty array
-DESTINATION_IP_LIST=()	# empty array
-PORT_LIST=()			# empty array
+SOURCE_IP_LIST=()						# empty array
+DESTINATION_IP_LIST=()					# empty array
+PORT_LIST=()							# empty array
+CUSTOM_KERNEL_DEBUG_MODULE_AND_FLAGS=()	# empty array
 
 # to be or not to be
 TRUE=1
@@ -333,7 +334,6 @@ function BuildFwMonitorSyntax()
 	fi
 }
 
-# working on this
 function CheckSecureXLStatus()
 {
 	SecureXLEnabled=$(fwaccel stat | grep -E "Accelerator Status")
@@ -370,7 +370,14 @@ function BuildKernelDebugSyntax()
 	KERNEL_DEBUG_SYNTAX+=("fw ctl debug 0")
 	KERNEL_DEBUG_SYNTAX+=("fw ctl debug -buf 32768")
 
-	KERNEL_DEBUG_SYNTAX+=("fw ctl debug -m fw + drop")
+	if [ -z ${CUSTOM_KERNEL_DEBUG_MODULE_AND_FLAGS+x} ]; then
+		# if CUSTOM_KERNEL_DEBUG_MODULE_AND_FLAGS is empty
+		KERNEL_DEBUG_SYNTAX+=("fw ctl debug -m fw + drop")
+	else
+		for MODULE_AND_FLAG in "${CUSTOM_KERNEL_DEBUG_MODULE_AND_FLAGS[@]}"; do
+			KERNEL_DEBUG_SYNTAX+=("fw ctl debug $MODULE_AND_FLAG")
+		done
+	fi
 
 	KERNEL_DEBUG_SYNTAX+=("nohup fw ctl kdebug -f -o $LOGDIR/kdebug.txt -m 10 -s 100000 >/dev/null 2>&1 &")
 }
@@ -392,6 +399,7 @@ function StopCapturesAndDebugs()
 	done
 
 	# check if SecureXL needs to be enabled again or not
+	#  in R80.20 SecureXL module was changed (sk151114)
 	if ([ "$MAJOR_VERSION" != "R80.20" ] || [ "$MAJOR_VERSION" != "R80.30" ]) && [ "$SecureXLEnabled" -eq "$TRUE" ];then
 		echo "Enabling SecureXL" | tee -a $LOGFILE
 		fwaccel on
@@ -399,8 +407,10 @@ function StopCapturesAndDebugs()
 		echo "SecureXL disabled when script started, leaving it that way" | tee -a $LOGFILE
 	fi
 
-	# remove all kernel debug flags
-	fw ctl debug 0
+	# stop kernel debug if it was running
+	if [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
+		fw ctl debug 0
+	fi
 }
 
 function ZipAndClean()
@@ -461,6 +471,8 @@ while [[ $# -gt 0 ]]; do
 						  	  	;;
 		-k | --kernel_debug	) 	# enable kernel debug
 								RUN_KDEBUG="$TRUE"
+								CUSTOM_KERNEL_DEBUG_MODULE_AND_FLAGS+=( "$2" )
+								shift
 								shift
 						  	  	;;
 		* 					) 	# invalid arg used
