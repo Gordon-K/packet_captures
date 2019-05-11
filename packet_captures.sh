@@ -117,7 +117,7 @@ function ParseUniqueInterfacesAndPorts()
 			printf "$SOURCE_IP : " >> $LOGFILE
 			for INTERFACE in ${LIST_OF_INTERFACES[*]}; do
 				if [[ $(ip route get $SOURCE_IP) == *$INTERFACE* ]]; then
-					INTERFACE=$( echo "$INTERFACE" )
+					INTERFACE=$( "$INTERFACE" )
 					printf "$INTERFACE\n" >> $LOGFILE
 					USED_INTERFACES+=("$INTERFACE")
 				fi
@@ -131,7 +131,7 @@ function ParseUniqueInterfacesAndPorts()
 			printf "$DESTINATION_IP : " >> $LOGFILE
 			for INTERFACE in ${LIST_OF_INTERFACES[*]}; do
 				if [[ $(ip route get $DESTINATION_IP) == *$INTERFACE* ]]; then
-					INTERFACE=$( echo "$INTERFACE" )
+					INTERFACE=$( "$INTERFACE" )
 					printf "$INTERFACE\n" >> $LOGFILE
 					USED_INTERFACES+=("$INTERFACE")
 				fi
