@@ -3,7 +3,7 @@
 # Kyle Gordon
 # Diamond Services Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.5.2
+# Version: 0.5.3
 # Last Modified May 10, 2019
 
 ###############################################################################
@@ -17,14 +17,14 @@ Flags:
   [ -d ] : Used to specify destination IP for filtering tcpdump and FW Monitor captures. Multiple destination IPs can be entered, each IP must be entered in [-d <destination IP>] format
   [ -p ] : Used to specify port for filtering tcpdump and FW Monitor captures. Multiple ports can be entered, each port must be entered in [-p <port>] format
   [ -t ] : Tells script to take a tcpdump on all relevent interfaces based on IPs provided with -s and -d flags. Tcpdump will be filtered according to source IP(s), dedstination IP(s), and port(s) provided to script.
-  [ -f ] : Tells script to take a FW Monitor capture. SecureXL will be disabled for captures on versions R77.30 and below. FW Monitor will be filtered according to source IP(s), dedstination IP(s), and port(s) provided to script.
+  [ -f ] : Tells script to take a FW Monitor capture. SecureXL will be disabled for captures on versions R80.10 and below. FW Monitor will be filtered according to source IP(s), dedstination IP(s), and port(s) provided to script.
   [ -k ] : Tells script to take Kernel Debugs. Entering only -k flag will default to debugging the fw module with the drop flag (fw ctl debug -m fw + drop). You can select the module and flags that you want to debug by running the -k flag followed by the module and flags in double-quotes like so: -k \"-m fw + drop\".
 "
 
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version: 0.5.2 May 10, 2019
+Version: 0.5.3 May 10, 2019
 Check for updates to this script at: https://github.com/Gordon-K/packet_captures
 
 "
@@ -472,9 +472,14 @@ while [[ $# -gt 0 ]]; do
 						  	  	;;
 		-k | --kernel_debug	) 	# enable kernel debug
 								RUN_KDEBUG="$TRUE"
-								CUSTOM_KERNEL_DEBUG_MODULE_AND_FLAGS+=( "$2" )
-								shift
-								shift
+								# check if arg after -k contains spaces
+								if [[ "$2" == *"-m"* ]]; then
+									CUSTOM_KERNEL_DEBUG_MODULE_AND_FLAGS+=( "$2" )
+									shift
+									shift
+								else
+									shift
+								fi
 						  	  	;;
 		* 					) 	# invalid arg used
 								echo "Invalid option: -$1" >&2
@@ -690,7 +695,7 @@ if [ "$RUN_TCPDUMP" -eq "$TRUE" ] || [ "$RUN_FW_MONITOR" -eq "$TRUE" ] || [ "$RU
 	echo "Captures/Debugs are running!"
 	echo "Press any key to stop captures/debugs"
 	read -n 1
-	echo "" # blank line to make things look nicer when pressing any key
+	echo "" # blank line to make things look nicer when pressing [the] any key
 	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Stopping Captures/Debugs..." | tee -a $LOGFILE
 	StopCapturesAndDebugs
 	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Captures/Debugs Stopped" | tee -a $LOGFILE
