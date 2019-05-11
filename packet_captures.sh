@@ -3,8 +3,8 @@
 # Kyle Gordon
 # Diamond Services Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.5.1
-# Last Modified May 08, 2019
+# Version: 0.5.3
+# Last Modified May 10, 2019
 
 ###############################################################################
 # Help and Usage Information
@@ -17,14 +17,14 @@ Flags:
   [ -d ] : Used to specify destination IP for filtering tcpdump and FW Monitor captures. Multiple destination IPs can be entered, each IP must be entered in [-d <destination IP>] format
   [ -p ] : Used to specify port for filtering tcpdump and FW Monitor captures. Multiple ports can be entered, each port must be entered in [-p <port>] format
   [ -t ] : Tells script to take a tcpdump on all relevent interfaces based on IPs provided with -s and -d flags. Tcpdump will be filtered according to source IP(s), dedstination IP(s), and port(s) provided to script.
-  [ -f ] : Tells script to take a FW Monitor capture. SecureXL will be disabled for captures on versions R77.30 and below. FW Monitor will be filtered according to source IP(s), dedstination IP(s), and port(s) provided to script.
-  [ -k ] : Tells script to take Kernel Debugs. Currently script defaults to '-m fw + drop' kernel debug. This is the same as running 'fw ctl zdebug drop'.
+  [ -f ] : Tells script to take a FW Monitor capture. SecureXL will be disabled for captures on versions R80.10 and below. FW Monitor will be filtered according to source IP(s), dedstination IP(s), and port(s) provided to script.
+  [ -k ] : Tells script to take Kernel Debugs. Entering only -k flag will default to debugging the fw module with the drop flag (fw ctl debug -m fw + drop). You can select the module and flags that you want to debug by running the -k flag followed by the module and flags in double-quotes like so: -k \"-m fw + drop\".
 "
 
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version: 0.5.1 May 08, 2019
+Version: 0.5.3 May 10, 2019
 Check for updates to this script at: https://github.com/Gordon-K/packet_captures
 
 "
@@ -32,9 +32,10 @@ Check for updates to this script at: https://github.com/Gordon-K/packet_captures
 # Variables
 ###############################################################################
 # empty arrays to be filled in with user input
-SOURCE_IP_LIST=()		# empty array
-DESTINATION_IP_LIST=()	# empty array
-PORT_LIST=()			# empty array
+SOURCE_IP_LIST=()						# empty array
+DESTINATION_IP_LIST=()					# empty array
+PORT_LIST=()							# empty array
+CUSTOM_KERNEL_DEBUG_MODULE_AND_FLAGS=()	# empty array
 
 # to be or not to be
 TRUE=1
@@ -45,6 +46,7 @@ RUN_TCPDUMP=$FALSE
 RUN_FW_MONITOR=$FALSE
 RUN_KDEBUG=$FALSE
 
+SCRIPT_NAME=($(basename $0))
 SHELL="[Expert@$HOSTNAME:$INSTANCE_VSID]#"
 DATE=$(date +%m-%d-%Y_h%Hm%Ms%S)
 MAJOR_VERSION=$(fw ver | awk '{print $7}')
@@ -115,7 +117,7 @@ function ParseUniqueInterfacesAndPorts()
 			printf "$SOURCE_IP : " >> $LOGFILE
 			for INTERFACE in ${LIST_OF_INTERFACES[*]}; do
 				if [[ $(ip route get $SOURCE_IP) == *$INTERFACE* ]]; then
-					INTERFACE=$( echo "$INTERFACE" | sed 's/\..*$//'  ) # remove VLAN tags
+					INTERFACE=$( "$INTERFACE" )
 					printf "$INTERFACE\n" >> $LOGFILE
 					USED_INTERFACES+=("$INTERFACE")
 				fi
@@ -129,7 +131,7 @@ function ParseUniqueInterfacesAndPorts()
 			printf "$DESTINATION_IP : " >> $LOGFILE
 			for INTERFACE in ${LIST_OF_INTERFACES[*]}; do
 				if [[ $(ip route get $DESTINATION_IP) == *$INTERFACE* ]]; then
-					INTERFACE=$( echo "$INTERFACE" | sed 's/\..*$//'  ) # remove VLAN tags
+					INTERFACE=$( "$INTERFACE" )
 					printf "$INTERFACE\n" >> $LOGFILE
 					USED_INTERFACES+=("$INTERFACE")
 				fi
@@ -333,7 +335,6 @@ function BuildFwMonitorSyntax()
 	fi
 }
 
-# working on this
 function CheckSecureXLStatus()
 {
 	SecureXLEnabled=$(fwaccel stat | grep -E "Accelerator Status")
@@ -370,7 +371,14 @@ function BuildKernelDebugSyntax()
 	KERNEL_DEBUG_SYNTAX+=("fw ctl debug 0")
 	KERNEL_DEBUG_SYNTAX+=("fw ctl debug -buf 32768")
 
-	KERNEL_DEBUG_SYNTAX+=("fw ctl debug -m fw + drop")
+	if [ -z ${CUSTOM_KERNEL_DEBUG_MODULE_AND_FLAGS+x} ]; then
+		# if CUSTOM_KERNEL_DEBUG_MODULE_AND_FLAGS is empty
+		KERNEL_DEBUG_SYNTAX+=("fw ctl debug -m fw + drop")
+	else
+		for MODULE_AND_FLAG in "${CUSTOM_KERNEL_DEBUG_MODULE_AND_FLAGS[@]}"; do
+			KERNEL_DEBUG_SYNTAX+=("fw ctl debug $MODULE_AND_FLAG")
+		done
+	fi
 
 	KERNEL_DEBUG_SYNTAX+=("nohup fw ctl kdebug -f -o $LOGDIR/kdebug.txt -m 10 -s 100000 >/dev/null 2>&1 &")
 }
@@ -392,6 +400,7 @@ function StopCapturesAndDebugs()
 	done
 
 	# check if SecureXL needs to be enabled again or not
+	#  in R80.20 SecureXL module was changed (sk151114)
 	if ([ "$MAJOR_VERSION" != "R80.20" ] || [ "$MAJOR_VERSION" != "R80.30" ]) && [ "$SecureXLEnabled" -eq "$TRUE" ];then
 		echo "Enabling SecureXL" | tee -a $LOGFILE
 		fwaccel on
@@ -399,8 +408,10 @@ function StopCapturesAndDebugs()
 		echo "SecureXL disabled when script started, leaving it that way" | tee -a $LOGFILE
 	fi
 
-	# remove all kernel debug flags
-	fw ctl debug 0
+	# stop kernel debug if it was running
+	if [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
+		fw ctl debug 0
+	fi
 }
 
 function ZipAndClean()
@@ -461,7 +472,14 @@ while [[ $# -gt 0 ]]; do
 						  	  	;;
 		-k | --kernel_debug	) 	# enable kernel debug
 								RUN_KDEBUG="$TRUE"
-								shift
+								# check if arg after -k contains spaces
+								if [[ "$2" == *"-m"* ]]; then
+									CUSTOM_KERNEL_DEBUG_MODULE_AND_FLAGS+=( "$2" )
+									shift
+									shift
+								else
+									shift
+								fi
 						  	  	;;
 		* 					) 	# invalid arg used
 								echo "Invalid option: -$1" >&2
@@ -532,7 +550,7 @@ fi
 # prep tcpdump
 #
 printf "\n================================\n" >> $LOGFILE
-printf "| tcpdump                      |\n" >> $LOGFILE
+printf "| tcpdump Prep                 |\n" >> $LOGFILE
 printf "================================\n" >> $LOGFILE
 if [ "$RUN_TCPDUMP" -eq "$TRUE" ]; then
 	echo "RUN_TCPDUMP: $RUN_TCPDUMP" >> $LOGFILE
@@ -581,7 +599,7 @@ fi
 # prep fw monitor
 #
 printf "\n================================\n" >> $LOGFILE
-printf "| FW Monitor                   |\n" >> $LOGFILE
+printf "| FW Monitor Prep              |\n" >> $LOGFILE
 printf "================================\n" >> $LOGFILE
 if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
 	echo "RUN_FW_MONITOR: $RUN_FW_MONITOR" >> $LOGFILE
@@ -603,7 +621,7 @@ fi
 # prep zdebug
 #
 printf "\n================================\n" >> $LOGFILE
-printf "| Kernel Debug                 |\n" >> $LOGFILE
+printf "| Kernel Debug Prep            |\n" >> $LOGFILE
 printf "================================\n" >> $LOGFILE
 if [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
 	echo "RUN_KDEBUG: $RUN_KDEBUG" >> $LOGFILE
@@ -619,11 +637,19 @@ fi
 #
 # start captures and debugs
 #
+printf "\n================================\n" >> $LOGFILE
+printf "| Run Kernel Debug             |\n" >> $LOGFILE
+printf "================================\n" >> $LOGFILE
 if [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
 	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Starting Kernel Debug:" >> $LOGFILE
 	RunKernelDebugCommands # start kernel debug first cause it takes longest to get up and running
+else
+	echo "No Kernel Debugs set to run, skipping" >> $LOGFILE
 fi
 
+printf "\n================================\n" >> $LOGFILE
+printf "| Run FW Monitor               |\n" >> $LOGFILE
+printf "================================\n" >> $LOGFILE
 if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
 
 	if [ "$MAJOR_VERSION" != "R80.20" ] || [ "$MAJOR_VERSION" != "R80.30" ];then
@@ -644,22 +670,32 @@ if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
 
 	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Starting FW Monitor:" >> $LOGFILE
 	RunFwMonitorCommands
+else
+	echo "No FW Monitor capture set to run, skipping" >> $LOGFILE
 fi
 
+printf "\n================================\n" >> $LOGFILE
+printf "| Run tcpdump                  |\n" >> $LOGFILE
+printf "================================\n" >> $LOGFILE
 if [ "$RUN_TCPDUMP" -eq "$TRUE" ]; then
 	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Starting tcpdump:" >> $LOGFILE
 	RunTcpdumpCommands
+else
+	echo "No tcpdump captures set to run, skipping" >> $LOGFILE
 fi
 
 #
 # prompt user to enter key to stop captures
 #  this only runs if a capture or debug has been set to run
 #
+printf "\n================================\n" >> $LOGFILE
+printf "| Stopping Captures/Debugs     |\n" >> $LOGFILE
+printf "================================\n" >> $LOGFILE
 if [ "$RUN_TCPDUMP" -eq "$TRUE" ] || [ "$RUN_FW_MONITOR" -eq "$TRUE" ] || [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
 	echo "Captures/Debugs are running!"
 	echo "Press any key to stop captures/debugs"
 	read -n 1
-	echo "" # blank line to make things look nicer when pressing any key
+	echo "" # blank line to make things look nicer when pressing [the] any key
 	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Stopping Captures/Debugs..." | tee -a $LOGFILE
 	StopCapturesAndDebugs
 	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Captures/Debugs Stopped" | tee -a $LOGFILE
@@ -669,6 +705,9 @@ fi
 # cleanup
 #  no point in running this if a capture was not taken
 #
+printf "\n================================\n" >> $LOGFILE
+printf "| Cleanup                      |\n" >> $LOGFILE
+printf "================================\n" >> $LOGFILE
 if [ "$RUN_TCPDUMP" -eq "$TRUE" ] || [ "$RUN_FW_MONITOR" -eq "$TRUE" ] || [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
 	ZipAndClean
 fi
