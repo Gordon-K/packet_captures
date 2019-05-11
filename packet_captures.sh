@@ -55,7 +55,7 @@ MAJOR_VERSION=$(fw ver | awk '{print $7}')
 LOGDIR="/var/log/tmp/packet_capture_script"
 LOGFILE="$LOGDIR/logs.txt"
 OUTPUTDIR="/var/log/tmp/packet_capture_script/outputs"
-OUTPUTFILE="$OUTPUTDIR/$SCRIPT_NAME_$DATE.tgz"
+OUTPUTFILE="$OUTPUTDIR/${SCRIPT_NAME}_${DATE}.tgz"
 ###############################################################################
 # Functions
 ###############################################################################
@@ -106,7 +106,21 @@ function GetDeviceInterfaces()
 	done
 }
 
-function ParseUniqueInterfacesAndPorts()
+function ParseUniqueSourceIP()
+{
+	echo "Removing any duplicate source IPs" >> $LOGFILE
+	# remove duplicates from SOURCE_IP_LIST
+	UNIQUE_SOURCE_IPS=($(echo "${SOURCE_IP_LIST[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+}
+
+function ParseUniqueDestinationIP()
+{
+	echo "Removing any duplicate destination IPs" >> $LOGFILE
+	# remove duplicates from DESTINATION_IP_LIST
+	UNIQUE_DESTINATION_IPS=($(echo "${DESTINATION_IP_LIST[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+}
+
+function ParseUniqueInterfaces()
 {
 	# array of interfaces to filter tcpdump capture with
 	USED_INTERFACES=()
@@ -139,21 +153,16 @@ function ParseUniqueInterfacesAndPorts()
 		done
 	fi
 
+	echo "Removing any duplicate interfaces" >> $LOGFILE
 	# remove duplicates from USED_INTERFACES
 	TCPDUMP_UNIQUE_INTERFACES=($(echo "${USED_INTERFACES[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+}
 
-	# array or ports to filter tcpdump capture with
-	USED_PORTS=()
-	if [ ${#PORT_LIST[@]} -gt 0 ]; then
-		echo "Ports found!" >> $LOGFILE
-		for PORT in ${PORT_LIST[*]}; do
-		echo "$PORT" >> $LOGFILE
-			USED_PORTS+=("$PORT")
-		done
-	fi
-
-	# remove duplicates from USED_PORTS
-	TCPDUMP_UNIQUE_PORTS=($(echo "${USED_PORTS[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
+function ParseUniquePorts()
+{
+	echo "Removing any duplicate ports" >> $LOGFILE
+	# remove duplicates from PORT_LIST
+	UNIQUE_PORTS=($(echo "${PORT_LIST[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
 }
 
 function CreateTcpdumpSourceFilter()
@@ -195,18 +204,18 @@ function CreateTcpdumpDestinationFilter()
 function CreateTcpdumpPortFilter()
 { 
 	TcpdumpPortFilter="(" # (
-	for i in `seq 0 ${#TCPDUMP_UNIQUE_PORTS[@]}`; do
+	for i in `seq 0 ${#UNIQUE_PORTS[@]}`; do
 		# first IP
 		if [ $i -eq 0 ]; then
-			TcpdumpPortFilter=$TcpdumpPortFilter"port ${TCPDUMP_UNIQUE_PORTS[$i]}"
+			TcpdumpPortFilter=$TcpdumpPortFilter"port ${UNIQUE_PORTS[$i]}"
 			continue
 		fi
 		# last IP
-		if [ $i -eq ${#TCPDUMP_UNIQUE_PORTS[@]} ]; then 
+		if [ $i -eq ${#UNIQUE_PORTS[@]} ]; then 
 			TcpdumpPortFilter=$TcpdumpPortFilter")" # )
 			break 
 		fi
-		TcpdumpPortFilter=$TcpdumpPortFilter" or port ${TCPDUMP_UNIQUE_PORTS[$i]}"
+		TcpdumpPortFilter=$TcpdumpPortFilter" or port ${UNIQUE_PORTS[$i]}"
 	done
 }
 
@@ -214,7 +223,7 @@ function BuildTcpdumpSyntax()
 {
 	TCPDUMP_SYNTAX=()
 
-	if [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#DESTINATION_IP_LIST[@]} -gt 0 ] &&  [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+	if [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#DESTINATION_IP_LIST[@]} -gt 0 ] &&  [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
 		for UNIQUE_INTERFACE in ${TCPDUMP_UNIQUE_INTERFACES[*]}; do
 			TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei $UNIQUE_INTERFACE \"$TcpdumpSourceFilter and $TcpdumpDestinationFilter and $TcpdumpPortFilter\" -C 100 -W 10 -w $LOGDIR/tcpdump-$UNIQUE_INTERFACE.pcap -Z ${USER} >/dev/null 2>&1 &")
 		done
@@ -222,11 +231,11 @@ function BuildTcpdumpSyntax()
 		for UNIQUE_INTERFACE in ${TCPDUMP_UNIQUE_INTERFACES[*]}; do
 			TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei $UNIQUE_INTERFACE \"$TcpdumpSourceFilter and $TcpdumpDestinationFilter\" -C 100 -W 10 -w $LOGDIR/tcpdump-$UNIQUE_INTERFACE.pcap -Z ${USER} >/dev/null 2>&1 &")
 		done
-	elif [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+	elif [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
 		for UNIQUE_INTERFACE in ${TCPDUMP_UNIQUE_INTERFACES[*]}; do
 			TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei $UNIQUE_INTERFACE \"$TcpdumpSourceFilter and $TcpdumpPortFilter\" -C 100 -W 10 -w $LOGDIR/tcpdump-$UNIQUE_INTERFACE.pcap -Z ${USER} >/dev/null 2>&1 &")
 		done
-	elif [ ${#DESTINATION_IP_LIST[@]} -gt 0 ] && [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+	elif [ ${#DESTINATION_IP_LIST[@]} -gt 0 ] && [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
 		for UNIQUE_INTERFACE in ${TCPDUMP_UNIQUE_INTERFACES[*]}; do
 			TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei $UNIQUE_INTERFACE \"$TcpdumpDestinationFilter and $TcpdumpPortFilter\" -C 100 -W 10 -w $LOGDIR/tcpdump-$UNIQUE_INTERFACE.pcap -Z ${USER} >/dev/null 2>&1 &")
 		done
@@ -238,7 +247,7 @@ function BuildTcpdumpSyntax()
 		for UNIQUE_INTERFACE in ${TCPDUMP_UNIQUE_INTERFACES[*]}; do
 			TCPDUMP_SYNTAX+=("nohup tcpdump -s 0 -nnei $UNIQUE_INTERFACE \"$TcpdumpDestinationFilter\" -C 100 -W 10 -w $LOGDIR/tcpdump-$UNIQUE_INTERFACE.pcap -Z ${USER} >/dev/null 2>&1 &")
 		done
-	elif [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+	elif [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
 		# 'any' interface is used if only port is entered because there's no IP to get an interface from
 		#  this may be more intensive and should probably have a warning attached
 		#  TODO: add warning
@@ -261,74 +270,76 @@ function RunTcpdumpCommands()
 function CreateFwMonitorSourceFilter()
 { 
 	FwMonitorSourceFilter="("
-	for i in `seq 0 ${#SOURCE_IP_LIST[@]}`; do
+	for i in `seq 0 ${#UNIQUE_SOURCE_IPS[@]}`; do
 		# first IP
 		if [ $i -eq 0 ]; then
-			FwMonitorSourceFilter=$FwMonitorSourceFilter"host(${SOURCE_IP_LIST[$i]})"
+			FwMonitorSourceFilter=$FwMonitorSourceFilter"host(${UNIQUE_SOURCE_IPS[$i]})"
 			continue
 		fi
 		# last IP
-		if [ $i -eq ${#SOURCE_IP_LIST[@]} ]; then 
+		if [ $i -eq ${#UNIQUE_SOURCE_IPS[@]} ]; then 
 			FwMonitorSourceFilter=$FwMonitorSourceFilter")"
 			break 
 		fi
-		FwMonitorSourceFilter=$FwMonitorSourceFilter" or host(${SOURCE_IP_LIST[$i]})"
+		FwMonitorSourceFilter=$FwMonitorSourceFilter" or host(${UNIQUE_SOURCE_IPS[$i]})"
 	done
 }
 
 function CreateFwMonitorDestinationFilter()
 { 
 	FwMonitorDestinationFilter="("
-	for i in `seq 0 ${#DESTINATION_IP_LIST[@]}`; do
+	for i in `seq 0 ${#UNIQUE_DESTINATION_IPS[@]}`; do
 		# first IP
 		if [ $i -eq 0 ]; then
-			FwMonitorDestinationFilter=$FwMonitorDestinationFilter"host(${DESTINATION_IP_LIST[$i]})"
+			FwMonitorDestinationFilter=$FwMonitorDestinationFilter"host(${UNIQUE_DESTINATION_IPS[$i]})"
 			continue
 		fi
 		# last IP
-		if [ $i -eq ${#DESTINATION_IP_LIST[@]} ]; then 
+		if [ $i -eq ${#UNIQUE_DESTINATION_IPS[@]} ]; then 
 			FwMonitorDestinationFilter=$FwMonitorDestinationFilter")"
 			break 
 		fi
-		FwMonitorDestinationFilter=$FwMonitorDestinationFilter" or host(${DESTINATION_IP_LIST[$i]})"
+		FwMonitorDestinationFilter=$FwMonitorDestinationFilter" or host(${UNIQUE_DESTINATION_IPS[$i]})"
 	done
 }
 
 function CreateFwMonitorPortFilter()
 { 
+	echo "Making FW Monitor port filter:"
 	FwMonitorPortFilter="("
-	for i in `seq 0 ${#TCPDUMP_UNIQUE_PORTS[@]}`; do
+	for i in `seq 0 ${#UNIQUE_PORTS[@]}`; do
 		# first IP
 		if [ $i -eq 0 ]; then
-			FwMonitorPortFilter=$FwMonitorPortFilter"port(${TCPDUMP_UNIQUE_PORTS[$i]})"
+			FwMonitorPortFilter=$FwMonitorPortFilter"port(${UNIQUE_PORTS[$i]})"
 			continue
 		fi
 		# last IP
-		if [ $i -eq ${#TCPDUMP_UNIQUE_PORTS[@]} ]; then 
+		if [ $i -eq ${#UNIQUE_PORTS[@]} ]; then 
 			FwMonitorPortFilter=$FwMonitorPortFilter")"
 			break 
 		fi
-		FwMonitorPortFilter=$FwMonitorPortFilter" or port(${TCPDUMP_UNIQUE_PORTS[$i]})"
+		FwMonitorPortFilter=$FwMonitorPortFilter" or port(${UNIQUE_PORTS[$i]})"
 	done
+	echo "FW Monitor port filter: $FwMonitorPortFilter"
 }
 
 function BuildFwMonitorSyntax()
 {
 	FW_MONITOR_SYNTAX=()
 
-	if [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#DESTINATION_IP_LIST[@]} -gt 0 ] &&  [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+	if [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#DESTINATION_IP_LIST[@]} -gt 0 ] && [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
 		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorSourceFilter and $FwMonitorDestinationFilter and $FwMonitorPortFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
 	elif [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#DESTINATION_IP_LIST[@]} -gt 0 ]; then
 		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorSourceFilter and $FwMonitorDestinationFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
-	elif [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+	elif [ ${#SOURCE_IP_LIST[@]} -gt 0 ] && [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
 		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorSourceFilter and $FwMonitorPortFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
-	elif [ ${#DESTINATION_IP_LIST[@]} -gt 0 ] && [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+	elif [ ${#DESTINATION_IP_LIST[@]} -gt 0 ] && [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
 		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorDestinationFilter and $FwMonitorPortFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
 	elif [ ${#SOURCE_IP_LIST[@]} -gt 0 ]; then
 		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorSourceFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")	
 	elif [ ${#DESTINATION_IP_LIST[@]} -gt 0 ]; then
 		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorDestinationFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
-	elif [ ${#TCPDUMP_UNIQUE_PORTS[@]} -gt 0 ]; then
+	elif [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
 		FW_MONITOR_SYNTAX+=("fw monitor -e \"$FwMonitorPortFilter, accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
 	else
 		FW_MONITOR_SYNTAX+=("fw monitor -e \"accept;\" -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
@@ -515,7 +526,7 @@ else
 		echo "Source IP $counter : $i" >> $LOGFILE
 		counter=$(( counter + 1 ))
 	done
-	
+	ParseUniqueSourceIP
 fi
 
 # destination IP logs
@@ -530,6 +541,7 @@ else
 		echo "Destination IP $counter : $i" >> $LOGFILE
 		counter=$(( counter + 1 ))		# increment counter
 	done
+	ParseUniqueDestinationIP
 fi
 
 # port logs
@@ -544,6 +556,7 @@ else
 		echo "Port $counter : $i" >> $LOGFILE
 		counter=$(( counter + 1 ))		# increment counter
 	done
+	ParseUniquePorts
 fi
 
 #
@@ -556,7 +569,7 @@ if [ "$RUN_TCPDUMP" -eq "$TRUE" ]; then
 	echo "RUN_TCPDUMP: $RUN_TCPDUMP" >> $LOGFILE
 
 	GetDeviceInterfaces
-	ParseUniqueInterfacesAndPorts
+	ParseUniqueInterfaces
 
 	# confirm that there is an interface that leads to any of the IPs that were provided by the user
 	if [ -z ${TCPDUMP_UNIQUE_INTERFACES+x} ]; then 
@@ -573,12 +586,12 @@ if [ "$RUN_TCPDUMP" -eq "$TRUE" ]; then
 		echo "TcpdumpDestinationFilter: $TcpdumpDestinationFilter" >> $LOGFILE
 	fi
 
-	if [ -z ${TCPDUMP_UNIQUE_PORTS+x} ]; then 
-		echo "TCPDUMP_UNIQUE_PORTS is empty" >> $LOGFILE
+	if [ -z ${UNIQUE_PORTS+x} ]; then 
+		echo "UNIQUE_PORTS is empty" >> $LOGFILE
 	else
 		counter=1
-		for i in "${TCPDUMP_UNIQUE_PORTS[@]}"; do
-			echo "TCPDUMP_UNIQUE_PORTS $counter : $i" >> $LOGFILE
+		for i in "${UNIQUE_PORTS[@]}"; do
+			echo "UNIQUE_PORTS $counter : $i" >> $LOGFILE
 			counter=$(( counter + 1 ))		# increment counter
 		done
 		CreateTcpdumpPortFilter
