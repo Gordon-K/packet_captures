@@ -396,8 +396,9 @@ function BuildKernelDebugSyntax()
 
 function RunKernelDebugCommands()
 {
-	echo "Starting Kernel Debug"
+	echo "Starting Kernel Debug" | tee -a $LOGFILE
 	for i in "${KERNEL_DEBUG_SYNTAX[@]}"; do
+		echo "$i" | tee -a $LOGFILE
 		eval $i # run command
 	done
 }
