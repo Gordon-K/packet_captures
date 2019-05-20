@@ -3,8 +3,8 @@
 # Kyle Gordon
 # Diamond Services Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.5.3
-# Last Modified May 10, 2019
+# Version: 0.5.4
+# Last Modified May 20, 2019
 
 ###############################################################################
 # Help and Usage Information
@@ -24,7 +24,7 @@ Flags:
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version: 0.5.3 May 10, 2019
+Version: 0.5.4 May 20, 2019
 Check for updates to this script at: https://github.com/Gordon-K/packet_captures
 
 "
@@ -96,16 +96,6 @@ function InitializeLogs()
 	printf "===============================================\n" >> $LOGFILE
 }
 
-function GetDeviceInterfaces()
-{
-	NUMBER_OF_INTERFACES=0
-
-	for line in $(ifconfig -a | sed 's/[ \t].*//;/^$/d'); do
-		LIST_OF_INTERFACES[$NUMBER_OF_INTERFACES]=$line
-		NUMBER_OF_INTERFACES=$NUMBER_OF_INTERFACES+1
-	done
-}
-
 function ParseUniqueSourceIP()
 {
 	echo "Removing any duplicate source IPs" >> $LOGFILE
@@ -129,13 +119,9 @@ function ParseUniqueInterfaces()
 		echo "Source IPs found!" >> $LOGFILE
 		for SOURCE_IP in ${SOURCE_IP_LIST[*]}; do
 			printf "$SOURCE_IP : " >> $LOGFILE
-			for INTERFACE in ${LIST_OF_INTERFACES[*]}; do
-				if [[ $(ip route get $SOURCE_IP) == *$INTERFACE* ]]; then
-					INTERFACE=$( "$INTERFACE" )
-					printf "$INTERFACE\n" >> $LOGFILE
-					USED_INTERFACES+=("$INTERFACE")
-				fi
-			done
+			INTERFACE="$(ip route get $SOURCE_IP | sed -n 's/.* dev \([^ ]*\).*/\1/p')"
+			printf "$INTERFACE\n" >> $LOGFILE
+			USED_INTERFACES+=("$INTERFACE")
 		done
 	fi
 
@@ -143,13 +129,9 @@ function ParseUniqueInterfaces()
 		echo "Destination IPs found!" >> $LOGFILE
 		for DESTINATION_IP in ${DESTINATION_IP_LIST[*]}; do
 			printf "$DESTINATION_IP : " >> $LOGFILE
-			for INTERFACE in ${LIST_OF_INTERFACES[*]}; do
-				if [[ $(ip route get $DESTINATION_IP) == *$INTERFACE* ]]; then
-					INTERFACE=$( "$INTERFACE" )
-					printf "$INTERFACE\n" >> $LOGFILE
-					USED_INTERFACES+=("$INTERFACE")
-				fi
-			done
+			INTERFACE="$(ip route get $DESTINATION_IP | sed -n 's/.* dev \([^ ]*\).*/\1/p')"
+			printf "$INTERFACE\n" >> $LOGFILE
+			USED_INTERFACES+=("$INTERFACE")
 		done
 	fi
 
@@ -396,8 +378,9 @@ function BuildKernelDebugSyntax()
 
 function RunKernelDebugCommands()
 {
-	echo "Starting Kernel Debug"
+	echo "Starting Kernel Debug" | tee -a $LOGFILE
 	for i in "${KERNEL_DEBUG_SYNTAX[@]}"; do
+		echo "$i" | tee -a $LOGFILE
 		eval $i # run command
 	done
 }
@@ -568,7 +551,6 @@ printf "================================\n" >> $LOGFILE
 if [ "$RUN_TCPDUMP" -eq "$TRUE" ]; then
 	echo "RUN_TCPDUMP: $RUN_TCPDUMP" >> $LOGFILE
 
-	GetDeviceInterfaces
 	ParseUniqueInterfaces
 
 	# confirm that there is an interface that leads to any of the IPs that were provided by the user
@@ -709,9 +691,9 @@ if [ "$RUN_TCPDUMP" -eq "$TRUE" ] || [ "$RUN_FW_MONITOR" -eq "$TRUE" ] || [ "$RU
 	echo "Press any key to stop captures/debugs"
 	read -n 1
 	echo "" # blank line to make things look nicer when pressing [the] any key
-	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Stopping Captures/Debugs..." | tee -a $LOGFILE
+	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Stopping Captures/Debugs..." >> $LOGFILE
 	StopCapturesAndDebugs
-	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Captures/Debugs Stopped" | tee -a $LOGFILE
+	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Captures/Debugs Stopped" >> $LOGFILE
 fi
 
 #
