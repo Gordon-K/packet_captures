@@ -395,7 +395,7 @@ function StopCapturesAndDebugs()
 
 	# check if SecureXL needs to be enabled again or not
 	#  in R80.20 SecureXL module was changed (sk151114)
-	if ([ "$MAJOR_VERSION" != "R80.20" ] || [ "$MAJOR_VERSION" != "R80.30" ]) && [ "$SecureXLEnabled" -eq "$TRUE" ];then
+	if ([ "$MAJOR_VERSION" != "R80.20" ] || [ "$MAJOR_VERSION" != "R80.30" ]) && [ "$SecureXLEnabled" == "$TRUE" ];then
 		echo "Enabling SecureXL" | tee -a $LOGFILE
 		fwaccel on
 	else
