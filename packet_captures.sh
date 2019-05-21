@@ -3,7 +3,7 @@
 # Kyle Gordon
 # Diamond Services Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.5.4
+# Version: 0.5.5
 # Last Modified May 20, 2019
 
 ###############################################################################
@@ -24,7 +24,7 @@ Flags:
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version: 0.5.4 May 20, 2019
+Version: 0.5.5 May 20, 2019
 Check for updates to this script at: https://github.com/Gordon-K/packet_captures
 
 "
@@ -287,7 +287,6 @@ function CreateFwMonitorDestinationFilter()
 
 function CreateFwMonitorPortFilter()
 { 
-	echo "Making FW Monitor port filter:"
 	FwMonitorPortFilter="("
 	for i in `seq 0 ${#UNIQUE_PORTS[@]}`; do
 		# first IP
@@ -302,7 +301,6 @@ function CreateFwMonitorPortFilter()
 		fi
 		FwMonitorPortFilter=$FwMonitorPortFilter" or port(${UNIQUE_PORTS[$i]})"
 	done
-	echo "FW Monitor port filter: $FwMonitorPortFilter"
 }
 
 function BuildFwMonitorSyntax()
@@ -373,7 +371,7 @@ function BuildKernelDebugSyntax()
 		done
 	fi
 
-	KERNEL_DEBUG_SYNTAX+=("nohup fw ctl kdebug -f -o $LOGDIR/kdebug.txt -m 10 -s 100000 >/dev/null 2>&1 &")
+	KERNEL_DEBUG_SYNTAX+=("nohup fw ctl kdebug -T -f > $LOGDIR/kdebug.txt 2>&1 &")
 }
 
 function RunKernelDebugCommands()
@@ -395,7 +393,7 @@ function StopCapturesAndDebugs()
 
 	# check if SecureXL needs to be enabled again or not
 	#  in R80.20 SecureXL module was changed (sk151114)
-	if ([ "$MAJOR_VERSION" != "R80.20" ] || [ "$MAJOR_VERSION" != "R80.30" ]) && [ "$SecureXLEnabled" -eq "$TRUE" ];then
+	if ([ "$MAJOR_VERSION" != "R80.20" ] || [ "$MAJOR_VERSION" != "R80.30" ]) && [ "$SecureXLEnabled" == "$TRUE" ];then
 		echo "Enabling SecureXL" | tee -a $LOGFILE
 		fwaccel on
 	else
