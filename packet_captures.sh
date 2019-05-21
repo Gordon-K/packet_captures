@@ -287,7 +287,6 @@ function CreateFwMonitorDestinationFilter()
 
 function CreateFwMonitorPortFilter()
 { 
-	echo "Making FW Monitor port filter:"
 	FwMonitorPortFilter="("
 	for i in `seq 0 ${#UNIQUE_PORTS[@]}`; do
 		# first IP
@@ -302,7 +301,6 @@ function CreateFwMonitorPortFilter()
 		fi
 		FwMonitorPortFilter=$FwMonitorPortFilter" or port(${UNIQUE_PORTS[$i]})"
 	done
-	echo "FW Monitor port filter: $FwMonitorPortFilter"
 }
 
 function BuildFwMonitorSyntax()
@@ -373,7 +371,7 @@ function BuildKernelDebugSyntax()
 		done
 	fi
 
-	KERNEL_DEBUG_SYNTAX+=("nohup fw ctl kdebug -f -o $LOGDIR/kdebug.txt -m 10 -s 100000 >/dev/null 2>&1 &")
+	KERNEL_DEBUG_SYNTAX+=("nohup fw ctl kdebug -T -f > $LOGDIR/kdebug.txt 2>&1 &")
 }
 
 function RunKernelDebugCommands()
