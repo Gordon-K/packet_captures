@@ -52,29 +52,8 @@ DATE=$(date +%m-%d-%Y_h%Hm%Ms%S)
 MAJOR_VERSION=$(fw ver | awk '{print $7}')
 
 ###############################################################################
-# Functions
+# Start script session logging
 ###############################################################################
-function DisplayScriptLogo()
-{
-	clear
-	printf "    ____             __        __     ______            __                \n"
-	printf "   / __ \____ ______/ /_____  / /_   / ____/___ _____  / /___  __________ \n"
-	printf "  / /_/ / __ \`/ ___/ //_/ _ \\/ __/  / /   / __ \`/ __ \/ __/ / / / ___/ _ \\ \n"
-	printf " / ____/ /_/ / /__/ ,< /  __/ /_   / /___/ /_/ / /_/ / /_/ /_/ / /  /  __/\n"
-	printf "/_/    \__,_/\___/_/|_|\___/\__/   \____/\__,_/ .___/\__/\__,_/_/   \___/ \n"
-	printf "                                             /_/                          \n"
-	printf "\n"
-	printf "==========================================================================\n"
-	printf "|                     Script Created By: Kyle Gordon                     |\n"
-	printf "==========================================================================\n"
-}
-
-function DisplayInteractiveMenu()
-{
-	# this will eventually get added
-	echo "Interactive menu is a WIP..."
-}
-
 function InitializeLogs()
 {
 	if (( $(df -P | grep /$ | awk '{ print $4 }') < "2000000" )); then
@@ -110,31 +89,86 @@ function InitializeLogs()
 	printf "===============================================\n" >> $LOGFILE
 }
 
-# Make sure that we don't fill up disk space on device
+# Printf to log file only
+printf_log()
+{
+	printf "$1" >> "$LOGFILE"
+}
+
+# Prints to terminal and log file
+printf_shell_log()
+{
+	printf "$1" | tee -a "$LOGFILE"
+}
+
+printf_log "$HELP_VERSION"
+START_DATE=$(/bin/date "+%d %b %Y %H:%M:%S %z")
+printf_log "Script Started at $START_DATE\n\n"
+
+###############################################################################
+# Disk and CPU Monitoring
+###############################################################################
 function disk_space_check()
 {
 	while true; do
 		DISKCHECK=$(df -P $LOGDIR | grep / | awk '{ print $4 }')
 		if (( "$DISKCHECK" < "500000" )); then
-			printf "\n\nDisk space is now less than 500MB. Stopping script...\n"
+			printf_shell_log "\n\nDisk space is now less than 500MB. Stopping script...\n"
 			df -h "$LOGDIR"
 			kill -15 $$
 		fi
-	sleep 10
+	sleep 5
 	done
 }
 disk_space_check &
 
+cpu_check()
+{
+	while true; do
+		CPUCHECK=$(vmstat | tail -1 | awk '{print $15}')
+		if (( "$CPUCHECK" < "20" )); then
+			printf_shell_log "\n\nCPU utilization is above 80%. Stopping script...\n"
+			kill -15 $$
+		fi
+	sleep 5
+	done
+}
+cpu_check &
+
+###############################################################################
+# Functions
+###############################################################################
+function DisplayScriptLogo()
+{
+	clear
+	printf_shell_log "    ____             __        __     ______            __                \n"
+	printf_shell_log "   / __ \____ ______/ /_____  / /_   / ____/___ _____  / /___  __________ \n"
+	printf_shell_log "  / /_/ / __ \`/ ___/ //_/ _ \\/ __/  / /   / __ \`/ __ \/ __/ / / / ___/ _ \\ \n"
+	printf_shell_log " / ____/ /_/ / /__/ ,< /  __/ /_   / /___/ /_/ / /_/ / /_/ /_/ / /  /  __/\n"
+	printf_shell_log "/_/    \__,_/\___/_/|_|\___/\__/   \____/\__,_/ .___/\__/\__,_/_/   \___/ \n"
+	printf_shell_log "                                             /_/                          \n"
+	printf_shell_log "\n"
+	printf_shell_log "==========================================================================\n"
+	printf_shell_log "|                     Script Created By: Kyle Gordon                     |\n"
+	printf_shell_log "==========================================================================\n"
+}
+
+function DisplayInteractiveMenu()
+{
+	# this will eventually get added
+	printf_shell_log "Interactive menu is a WIP..."
+}
+
 function ParseUniqueSourceIP()
 {
-	echo "Removing any duplicate source IPs" >> $LOGFILE
+	printf_log "Removing any duplicate source IPs\n"
 	# remove duplicates from SOURCE_IP_LIST
 	UNIQUE_SOURCE_IPS=($(echo "${SOURCE_IP_LIST[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
 }
 
 function ParseUniqueDestinationIP()
 {
-	echo "Removing any duplicate destination IPs" >> $LOGFILE
+	printf_log "Removing any duplicate destination IPs\n"
 	# remove duplicates from DESTINATION_IP_LIST
 	UNIQUE_DESTINATION_IPS=($(echo "${DESTINATION_IP_LIST[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
 }
@@ -145,33 +179,33 @@ function ParseUniqueInterfaces()
 	USED_INTERFACES=()
 
 	if [ ${#SOURCE_IP_LIST[@]} -gt 0 ]; then
-		echo "Source IPs found!" >> $LOGFILE
+		printf_log "Source IPs found!\n"
 		for SOURCE_IP in ${SOURCE_IP_LIST[*]}; do
-			printf "$SOURCE_IP : " >> $LOGFILE
+			printf_log "$SOURCE_IP : "
 			INTERFACE="$(ip route get $SOURCE_IP | sed -n 's/.* dev \([^ ]*\).*/\1/p')"
-			printf "$INTERFACE\n" >> $LOGFILE
+			printf_log "$INTERFACE\n"
 			USED_INTERFACES+=("$INTERFACE")
 		done
 	fi
 
 	if [ ${#DESTINATION_IP_LIST[@]} -gt 0 ]; then
-		echo "Destination IPs found!" >> $LOGFILE
+		printf_log "Destination IPs found!"
 		for DESTINATION_IP in ${DESTINATION_IP_LIST[*]}; do
-			printf "$DESTINATION_IP : " >> $LOGFILE
+			printf_log "$DESTINATION_IP : "
 			INTERFACE="$(ip route get $DESTINATION_IP | sed -n 's/.* dev \([^ ]*\).*/\1/p')"
-			printf "$INTERFACE\n" >> $LOGFILE
+			printf_log "$INTERFACE\n"
 			USED_INTERFACES+=("$INTERFACE")
 		done
 	fi
 
-	echo "Removing any duplicate interfaces" >> $LOGFILE
+	printf_log "Removing any duplicate interfaces"
 	# remove duplicates from USED_INTERFACES
 	TCPDUMP_UNIQUE_INTERFACES=($(echo "${USED_INTERFACES[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
 }
 
 function ParseUniquePorts()
 {
-	echo "Removing any duplicate ports" >> $LOGFILE
+	printf_log "Removing any duplicate ports\n"
 	# remove duplicates from PORT_LIST
 	UNIQUE_PORTS=($(echo "${PORT_LIST[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
 }
@@ -272,8 +306,9 @@ function BuildTcpdumpSyntax()
 
 function RunTcpdumpCommands()
 {
-	echo "Starting tcpdumps"
+	printf_shell_log "Starting tcpdumps\n"
 	for i in "${TCPDUMP_SYNTAX[@]}"; do
+		printf_shell_log "$i"
 		eval $i # run command
 	done
 }
@@ -360,24 +395,21 @@ function CheckSecureXLStatus()
 	SecureXLEnabled=$(fwaccel stat | grep -E "Accelerator Status")
 
 	if [[ $SecureXLEnabled == *"on"* ]]; then
-		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
-		printf "SecureXL is on\n" | tee -a $LOGFILE
+		printf_log "SecureXL is on\n"
 		SecureXLEnabled=$TRUE
-		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
-		printf "SecureXLEnabled: $SecureXLEnabled \n" >> $LOGFILE
+		printf_log "SecureXLEnabled: $SecureXLEnabled \n"
 	else
-		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
-		printf "SecureXL is off\n" | tee -a $LOGFILE
+		printf_log "SecureXL is off\n"
 		SecureXLEnabled=$FALSE
-		printf "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] " >> $LOGFILE
-		printf "SecureXLEnabled: $SecureXLEnabled \n" >> $LOGFILE
+		printf_log "SecureXLEnabled: $SecureXLEnabled \n"
 	fi
 }
 
 function RunFwMonitorCommands()
 {
-	echo "Starting FW Monitor"
+	printf_shell_log "Starting FW Monitor\n"
 	for i in "${FW_MONITOR_SYNTAX[@]}"; do
+		printf_shell_log "$i"
 		eval $i # run command
 	done
 }
@@ -405,9 +437,9 @@ function BuildKernelDebugSyntax()
 
 function RunKernelDebugCommands()
 {
-	echo "Starting Kernel Debug" | tee -a $LOGFILE
+	printf_shell_log "Starting Kernel Debug\n"
 	for i in "${KERNEL_DEBUG_SYNTAX[@]}"; do
-		echo "$i" | tee -a $LOGFILE
+		printf_shell_log "$i"
 		eval $i # run command
 	done
 }
@@ -423,38 +455,39 @@ function StopCapturesAndDebugs()
 	# check if SecureXL needs to be enabled again or not
 	#  in R80.20 SecureXL module was changed (sk151114)
 	if ([ "$MAJOR_VERSION" != "R80.20" ] || [ "$MAJOR_VERSION" != "R80.30" ]) && [ "$SecureXLEnabled" == "$TRUE" ];then
-		echo "Enabling SecureXL" | tee -a $LOGFILE
+		printf_shell_log "Enabling SecureXL\n"
 		fwaccel on
 	else
-		echo "SecureXL disabled when script started, leaving it that way" | tee -a $LOGFILE
+		printf_shell_log "SecureXL disabled when script started, leaving it that way\n"
 	fi
 
 	# stop kernel debug if it was running
 	if [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
+		printf_log "fw ctl debug 0\n"
 		fw ctl debug 0
 	fi
 }
 
 function ZipAndClean()
 {
-	echo "Creating tarball and cleaning up after myself..." | tee -a $LOGFILE
+	printf_shell_log "Creating tarball and cleaning up after myself...\n"
 	cd $LOGDIR && tar --exclude='./outputs' -zcvf $OUTPUTFILE .
 	rm $LOGDIR/* 2>/dev/null
-	echo ""
-	echo "File Location: $OUTPUTFILE"
-	echo "Check for updates to this script at: https://github.com/Gordon-K/packet_captures"
+	printf_shell_log "\n"
+	printf_shell_log "File Location: $OUTPUTFILE \n"
+	printf_shell_log "Check for updates to this script at: https://github.com/Gordon-K/packet_captures \n"
 }
 ###############################################################################
 # Process cleanup AND termination signals
 ###############################################################################
 function interrupted()
 {
-	printf "\n\nScript interrupted, stopping captures and debugs...\n"
+	printf_shell_log "\n\nScript interrupted, stopping captures and debugs...\n"
 	StopCapturesAndDebugs
 	ZipAndClean
-	printf "Cleaning temporary files...\n"
+	printf_shell_log "Cleaning temporary files...\n"
 	clean_up # Calling manually and again below
-	printf "Completed\n"
+	printf_shell_log "Completed\n"
 	exit 1 # Triggers clean_up
 }
 trap interrupted SIGHUP SIGINT SIGTERM # 1 2 15
@@ -472,8 +505,8 @@ trap clean_up EXIT
 # if script ran with no args 
 if [[ $# -eq 0 ]]; then
 	DisplayScriptLogo
-	echo "$HELP_VERSION"
-	echo "$HELP_USAGE"
+	printf_shell_log "$HELP_VERSION \n"
+	printf_shell_log "$HELP_USAGE \n"
 	exit
 	# DisplayInteractiveMenu
 fi
@@ -482,12 +515,12 @@ while [[ $# -gt 0 ]]; do
 	case "$1" in
 		-h | --help 		) 	# display help info
 								DisplayScriptLogo
-							  	echo "$HELP_USAGE"
+							  	printf_shell_log "$HELP_USAGE \n"
 							  	exit 
 							  	;;
 		-v | --version  	) 	# display verison info
 								DisplayScriptLogo
-						  	  	echo "$HELP_VERSION"
+						  	  	printf_shell_log "$HELP_VERSION \n"
 						  	  	exit 
 						  	  	;;
 		-s | --source		) 	# add one or more source IPs to filter captures by
@@ -525,8 +558,8 @@ while [[ $# -gt 0 ]]; do
 								fi
 						  	  	;;
 		* 					) 	# invalid arg used
-								echo "Invalid option: -$1" >&2
-								echo "$HELP_USAGE" >&2
+								printf_shell_log "Invalid option: -$1 \n" >&2
+								printf_shell_log "$HELP_USAGE \n" >&2
 								exit 1 
 								;;
 	esac
@@ -536,7 +569,7 @@ done
 ###############################################################################
 DisplayScriptLogo				# tell everyone who made this steaming pile of script
 if [ "$RUN_TCPDUMP" -eq "$FALSE" ] && [ "$RUN_FW_MONITOR" -eq "$FALSE" ] && [ "$RUN_KDEBUG" -eq "$FALSE" ]; then
-	echo "No capture or debug was selected, please run the script with one of the following flags: -t, -f, -k"
+	printf_shell_log "No capture or debug was selected, please run the script with one of the following flags: -t, -f, -k\n"
 	exit
 fi
 InitializeLogs					# create $LOGDIR
@@ -547,45 +580,45 @@ InitializeLogs					# create $LOGDIR
 #
 
 # source IP logs
-printf "\n================================\n" >> $LOGFILE
-printf "| Source IPs Entered           |\n" >> $LOGFILE
-printf "================================\n" >> $LOGFILE
+printf_log "\n================================\n"
+printf_log "| Source IPs Entered           |\n"
+printf_log "================================\n"
 if [ -z ${SOURCE_IP_LIST+x} ]; then 
-	echo "SOURCE_IP_LIST is empty" >> $LOGFILE
+	printf_log "SOURCE_IP_LIST is empty\n"
 else
 	counter=1
 	for i in "${SOURCE_IP_LIST[@]}"; do
-		echo "Source IP $counter : $i" >> $LOGFILE
+		printf_log "Source IP $counter : $i\n"
 		counter=$(( counter + 1 ))
 	done
 	ParseUniqueSourceIP
 fi
 
 # destination IP logs
-printf "\n================================\n" >> $LOGFILE
-printf "| Destination IPs Entered      |\n" >> $LOGFILE
-printf "================================\n" >> $LOGFILE
+printf_log "\n================================\n"
+printf_log "| Destination IPs Entered      |\n"
+printf_log "================================\n"
 if [ -z ${DESTINATION_IP_LIST+x} ]; then 
-	echo "DESTINATION_IP_LIST is empty" >> $LOGFILE
+	printf_log "DESTINATION_IP_LIST is empty\n"
 else
 	counter=1
 	for i in "${DESTINATION_IP_LIST[@]}"; do
-		echo "Destination IP $counter : $i" >> $LOGFILE
+		printf_log "Destination IP $counter : $i\n"
 		counter=$(( counter + 1 ))		# increment counter
 	done
 	ParseUniqueDestinationIP
 fi
 
 # port logs
-printf "\n================================\n" >> $LOGFILE
-printf "| Ports Entered                |\n" >> $LOGFILE
-printf "================================\n" >> $LOGFILE
+printf_log "\n================================\n"
+printf_log "| Ports Entered                |\n"
+printf_log "================================\n"
 if [ -z ${PORT_LIST+x} ]; then 
-	echo "PORT_LIST is empty" >> $LOGFILE
+	printf_log "PORT_LIST is empty\n"
 else
 	counter=1
 	for i in "${PORT_LIST[@]}"; do
-		echo "Port $counter : $i" >> $LOGFILE
+		printf_log "Port $counter : $i\n"
 		counter=$(( counter + 1 ))		# increment counter
 	done
 	ParseUniquePorts
@@ -594,59 +627,59 @@ fi
 #
 # prep tcpdump
 #
-printf "\n================================\n" >> $LOGFILE
-printf "| tcpdump Prep                 |\n" >> $LOGFILE
-printf "================================\n" >> $LOGFILE
+printf_log "\n================================\n"
+printf_log "| tcpdump Prep                 |\n"
+printf_log "================================\n"
 if [ "$RUN_TCPDUMP" -eq "$TRUE" ]; then
-	echo "RUN_TCPDUMP: $RUN_TCPDUMP" >> $LOGFILE
+	printf_log "RUN_TCPDUMP: $RUN_TCPDUMP\n"
 
 	ParseUniqueInterfaces
 
 	# confirm that there is an interface that leads to any of the IPs that were provided by the user
 	if [ -z ${TCPDUMP_UNIQUE_INTERFACES+x} ]; then 
-		echo "TCPDUMP_UNIQUE_INTERFACES is empty" >> $LOGFILE
+		printf_log "TCPDUMP_UNIQUE_INTERFACES is empty\n"
 	else
 		counter=1
 		for i in "${TCPDUMP_UNIQUE_INTERFACES[@]}"; do
-			echo "TCPDUMP_UNIQUE_INTERFACES $counter : $i" >> $LOGFILE
+			printf_log "TCPDUMP_UNIQUE_INTERFACES $counter : $i\n"
 			counter=$(( counter + 1 ))		# increment counter
 		done
 		CreateTcpdumpSourceFilter
-		echo "TcpdumpSourceFilter: $TcpdumpSourceFilter" >> $LOGFILE
+		printf_log "TcpdumpSourceFilter: $TcpdumpSourceFilter\n"
 		CreateTcpdumpDestinationFilter
-		echo "TcpdumpDestinationFilter: $TcpdumpDestinationFilter" >> $LOGFILE
+		printf_log "TcpdumpDestinationFilter: $TcpdumpDestinationFilter\n"
 	fi
 
 	if [ -z ${UNIQUE_PORTS+x} ]; then 
-		echo "UNIQUE_PORTS is empty" >> $LOGFILE
+		printf_log "UNIQUE_PORTS is empty\n"
 	else
 		counter=1
 		for i in "${UNIQUE_PORTS[@]}"; do
-			echo "UNIQUE_PORTS $counter : $i" >> $LOGFILE
+			printf_log "UNIQUE_PORTS $counter : $i\n"
 			counter=$(( counter + 1 ))		# increment counter
 		done
 		CreateTcpdumpPortFilter
-		echo "TcpdumpPortFilter: $TcpdumpPortFilter" >> $LOGFILE
+		printf_log "TcpdumpPortFilter: $TcpdumpPortFilter\n"
 	fi
 
 	BuildTcpdumpSyntax
-	echo "tcpdump syntax: " >> $LOGFILE
+	printf_log "tcpdump syntax: \n"
 	for i in "${TCPDUMP_SYNTAX[@]}"; do
-		echo "$SHELL $i" >> $LOGFILE
+		printf_log "$SHELL $i\n"
 	done
 
 else
-	echo "RUN_TCPDUMP: $RUN_TCPDUMP" >> $LOGFILE
+	printf_log "RUN_TCPDUMP: $RUN_TCPDUMP\n"
 fi
 
 #
 # prep fw monitor
 #
-printf "\n================================\n" >> $LOGFILE
-printf "| FW Monitor Prep              |\n" >> $LOGFILE
-printf "================================\n" >> $LOGFILE
+printf_log "\n================================\n"
+printf_log "| FW Monitor Prep              |\n"
+printf_log "================================\n"
 if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
-	echo "RUN_FW_MONITOR: $RUN_FW_MONITOR" >> $LOGFILE
+	printf_log "RUN_FW_MONITOR: $RUN_FW_MONITOR\n"
 
 	# FW Monitor syntax changed from R80.20 take 76 onwards
 	#TODO: Create different FW Monitor filters for new and old syntax
@@ -655,105 +688,105 @@ if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
 	CreateFwMonitorPortFilter
 	BuildFwMonitorSyntax
 
-	echo "FW Monitor syntax: " >> $LOGFILE
+	printf_log "FW Monitor syntax: \n"
 	for i in "${FW_MONITOR_SYNTAX[@]}"; do
-		echo "$SHELL $i" >> $LOGFILE
+		printf_log "$SHELL $i\n"
 	done
 else
-	echo "RUN_FW_MONITOR: $RUN_FW_MONITOR" >> $LOGFILE
+	printf_log "RUN_FW_MONITOR: $RUN_FW_MONITOR\n"
 fi
 
 #
 # prep zdebug
 #
-printf "\n================================\n" >> $LOGFILE
-printf "| Kernel Debug Prep            |\n" >> $LOGFILE
-printf "================================\n" >> $LOGFILE
+printf_log "\n================================\n"
+printf_log "| Kernel Debug Prep            |\n"
+printf_log "================================\n"
 if [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
-	echo "RUN_KDEBUG: $RUN_KDEBUG" >> $LOGFILE
+	printf_log "RUN_KDEBUG: $RUN_KDEBUG\n"
 	BuildKernelDebugSyntax
-	echo "Kernel Debug syntax: " >> $LOGFILE
+	printf_log "Kernel Debug syntax: \n"
 	for i in "${KERNEL_DEBUG_SYNTAX[@]}"; do
-		printf "$SHELL $i\n" >> $LOGFILE
+		printf_log "$SHELL $i\n"
 	done
 else
-	echo "RUN_KDEBUG: $RUN_KDEBUG" >> $LOGFILE
+	printf_log "RUN_KDEBUG: $RUN_KDEBUG \n"
 fi
 
 #
 # start captures and debugs
 #
-printf "\n================================\n" >> $LOGFILE
-printf "| Run Kernel Debug             |\n" >> $LOGFILE
-printf "================================\n" >> $LOGFILE
+printf_log "\n================================\n"
+printf_log "| Run Kernel Debug             |\n"
+printf_log "================================\n"
 if [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
-	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Starting Kernel Debug:" >> $LOGFILE
+	printf_log "Starting Kernel Debug:\n"
 	RunKernelDebugCommands # start kernel debug first cause it takes longest to get up and running
 else
-	echo "No Kernel Debugs set to run, skipping" >> $LOGFILE
+	printf_log "No Kernel Debugs set to run, skipping\n"
 fi
 
-printf "\n================================\n" >> $LOGFILE
-printf "| Run FW Monitor               |\n" >> $LOGFILE
-printf "================================\n" >> $LOGFILE
+printf_log "\n================================\n"
+printf_log "| Run FW Monitor               |\n"
+printf_log "================================\n"
 if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
 
 	if [ "$MAJOR_VERSION" != "R80.20" ] || [ "$MAJOR_VERSION" != "R80.30" ];then
-		echo "SecureXL does need to be disabled for FW Monitor, checking status" | tee -a $LOGFILE
-		echo "MAJOR_VERSION: $MAJOR_VERSION" >> $LOGFILE
+		printf_shell_log "SecureXL does need to be disabled for FW Monitor, checking status\n"
+		printf_log "MAJOR_VERSION: $MAJOR_VERSION\n"
 		CheckSecureXLStatus
 
 		if [ "$SecureXLEnabled" -eq "$TRUE" ]; then
-			echo "Disabling SecureXL" | tee -a $LOGFILE
+			printf_shell_log "Disabling SecureXL\n"
 			fwaccel off
 		else
-			echo "SecureXL already disabled, leaving it that way" | tee -a $LOGFILE
+			printf_shell_log "SecureXL already disabled, leaving it that way\n"
 		fi
 	else
-		echo "SecureXL does not need to be disabled for FW Monitor, skipping check" | tee -a $LOGFILE
-		echo "MAJOR_VERSION: $MAJOR_VERSION" >> $LOGFILE
+		printf_shell_log "SecureXL does not need to be disabled for FW Monitor, skipping check\n"
+		printf_log "MAJOR_VERSION: $MAJOR_VERSION\n"
 	fi
 
-	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Starting FW Monitor:" >> $LOGFILE
+	printf_log "Starting FW Monitor:\n"
 	RunFwMonitorCommands
 else
-	echo "No FW Monitor capture set to run, skipping" >> $LOGFILE
+	printf_log "No FW Monitor capture set to run, skipping\n"
 fi
 
-printf "\n================================\n" >> $LOGFILE
-printf "| Run tcpdump                  |\n" >> $LOGFILE
-printf "================================\n" >> $LOGFILE
+printf_log "\n================================\n"
+printf_log "| Run tcpdump                  |\n"
+printf_log "================================\n"
 if [ "$RUN_TCPDUMP" -eq "$TRUE" ]; then
-	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Starting tcpdump:" >> $LOGFILE
+	printf_log "Starting tcpdump:\n"
 	RunTcpdumpCommands
 else
-	echo "No tcpdump captures set to run, skipping" >> $LOGFILE
+	printf_log "No tcpdump captures set to run, skipping\n"
 fi
 
 #
 # prompt user to enter key to stop captures
 #  this only runs if a capture or debug has been set to run
 #
-printf "\n================================\n" >> $LOGFILE
-printf "| Stopping Captures/Debugs     |\n" >> $LOGFILE
-printf "================================\n" >> $LOGFILE
+printf_log "\n================================\n"
+printf_log "| Stopping Captures/Debugs     |\n"
+printf_log "================================\n"
 if [ "$RUN_TCPDUMP" -eq "$TRUE" ] || [ "$RUN_FW_MONITOR" -eq "$TRUE" ] || [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
-	echo "Captures/Debugs are running!"
-	echo "Press any key to stop captures/debugs"
+	printf_shell_log "Captures/Debugs are running!\n"
+	printf_shell_log "Press any key to stop captures/debugs\n"
 	read -n 1
-	echo "" # blank line to make things look nicer when pressing [the] any key
-	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Stopping Captures/Debugs..." >> $LOGFILE
+	printf_shell_log "\n" # blank line to make things look nicer when pressing [the] any key
+	printf_shell_log "Stopping Captures/Debugs...\n"
 	StopCapturesAndDebugs
-	echo "[ $(date +%m-%d-%Y_h%Hm%Ms%S) ] Captures/Debugs Stopped" >> $LOGFILE
+	printf_shell_log "Captures/Debugs Stopped\n"
 fi
 
 #
 # cleanup
 #  no point in running this if a capture was not taken
 #
-printf "\n================================\n" >> $LOGFILE
-printf "| Cleanup                      |\n" >> $LOGFILE
-printf "================================\n" >> $LOGFILE
+printf_log "\n================================\n"
+printf_log "| Cleanup                      |\n"
+printf_log "================================\n"
 if [ "$RUN_TCPDUMP" -eq "$TRUE" ] || [ "$RUN_FW_MONITOR" -eq "$TRUE" ] || [ "$RUN_KDEBUG" -eq "$TRUE" ]; then
 	ZipAndClean
 fi
