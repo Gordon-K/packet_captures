@@ -51,11 +51,6 @@ SHELL="[Expert@$HOSTNAME:$INSTANCE_VSID]#"
 DATE=$(date +%m-%d-%Y_h%Hm%Ms%S)
 MAJOR_VERSION=$(fw ver | awk '{print $7}')
 
-# directories and file locations
-LOGDIR="/var/log/tmp/packet_capture_script"
-LOGFILE="$LOGDIR/logs.txt"
-OUTPUTDIR="/var/log/tmp/packet_capture_script/outputs"
-OUTPUTFILE="$OUTPUTDIR/${SCRIPT_NAME}_${DATE}.tgz"
 ###############################################################################
 # Functions
 ###############################################################################
@@ -82,6 +77,25 @@ function DisplayInteractiveMenu()
 
 function InitializeLogs()
 {
+	if (( $(df -P | grep /$ | awk '{ print $4 }') < "2000000" )); then
+		if (( $(df -P | egrep "/var$|/var/log$" | awk '{ print $4 }') < "2000000" )); then
+			printf "\nThere is not enough disk space available\n"
+			printf "Please follow sk60080 to clear disk space\n"
+			exit 1
+		else
+			# Not enough space in root. Enough in /var/log
+			LOGDIR="/var/log/tmp/packet_capture_script"
+		fi
+	else
+		# Enough space in root
+		LOGDIR="/tmp/packet_capture_script"
+	fi
+
+	# Log files and directories
+	LOGFILE="$LOGDIR/logs.txt"
+	OUTPUTDIR="$LOGDIR/outputs"
+	OUTPUTFILE="$OUTPUTDIR/${SCRIPT_NAME}_${DATE}.tgz"
+
 	# create log directory
 	printf "Creating log directory: $LOGDIR\n"
 	mkdir -p $LOGDIR
@@ -89,7 +103,7 @@ function InitializeLogs()
 	mkdir -p $OUTPUTDIR
 
 	# create log file
-	touch $LOGDIR/logs.txt
+	touch $LOGFILE
 	printf "" > $LOGFILE
 	printf "===============================================\n" >> $LOGFILE
 	printf "| User Input\n" >> $LOGFILE
@@ -597,6 +611,8 @@ printf "================================\n" >> $LOGFILE
 if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
 	echo "RUN_FW_MONITOR: $RUN_FW_MONITOR" >> $LOGFILE
 
+	# FW Monitor syntax changed from R80.20 take 76 onwards
+	#TODO: Create different FW Monitor filters for new and old syntax
 	CreateFwMonitorSourceFilter
 	CreateFwMonitorDestinationFilter
 	CreateFwMonitorPortFilter
