@@ -24,7 +24,7 @@ Flags:
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version: 0.5.5 May 20, 2019
+Version: 0.6.0 Nov 20, 2019
 Check for updates to this script at: https://github.com/Gordon-K/packet_captures
 
 "
