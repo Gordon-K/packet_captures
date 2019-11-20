@@ -110,6 +110,21 @@ function InitializeLogs()
 	printf "===============================================\n" >> $LOGFILE
 }
 
+# Make sure that we don't fill up disk space on device
+function disk_space_check()
+{
+	while true; do
+		DISKCHECK=$(df -P $LOGDIR | grep / | awk '{ print $4 }')
+		if (( "$DISKCHECK" < "500000" )); then
+			printf "\n\nDisk space is now less than 500MB. Stopping script...\n"
+			df -h "$LOGDIR"
+			kill -15 $$
+		fi
+	sleep 10
+	done
+}
+disk_space_check &
+
 function ParseUniqueSourceIP()
 {
 	echo "Removing any duplicate source IPs" >> $LOGFILE
@@ -432,7 +447,7 @@ function ZipAndClean()
 ###############################################################################
 # Process cleanup AND termination signals
 ###############################################################################
-interrupted()
+function interrupted()
 {
 	printf "\n\nScript interrupted, stopping captures and debugs...\n"
 	StopCapturesAndDebugs
@@ -444,7 +459,7 @@ interrupted()
 }
 trap interrupted SIGHUP SIGINT SIGTERM # 1 2 15
 
-clean_up()
+function clean_up()
 {
 	pkill -P $$
 	rm $LOGDIR/* 2>/dev/null
