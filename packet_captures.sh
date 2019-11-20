@@ -92,13 +92,13 @@ function InitializeLogs()
 # Printf to log file only
 printf_log()
 {
-	printf "$1" >> "$LOGFILE"
+	printf "$1" >> $LOGFILE
 }
 
 # Prints to terminal and log file
 printf_shell_log()
 {
-	printf "$1" | tee -a "$LOGFILE"
+	printf "$1" | tee -a $LOGFILE
 }
 
 printf_log "$HELP_VERSION"
@@ -112,7 +112,7 @@ function disk_space_check()
 {
 	while true; do
 		DISKCHECK=$(df -P $LOGDIR | grep / | awk '{ print $4 }')
-		if (( "$DISKCHECK" < "500000" )); then
+		if (( "$DISKCHECK" < 500000 )); then
 			printf_shell_log "\n\nDisk space is now less than 500MB. Stopping script...\n"
 			df -h "$LOGDIR"
 			kill -15 $$
@@ -126,7 +126,7 @@ cpu_check()
 {
 	while true; do
 		CPUCHECK=$(vmstat | tail -1 | awk '{print $15}')
-		if (( "$CPUCHECK" < "20" )); then
+		if (( "$CPUCHECK" < 20 )); then
 			printf_shell_log "\n\nCPU utilization is above 80%. Stopping script...\n"
 			kill -15 $$
 		fi
@@ -308,7 +308,7 @@ function RunTcpdumpCommands()
 {
 	printf_shell_log "Starting tcpdumps\n"
 	for i in "${TCPDUMP_SYNTAX[@]}"; do
-		printf_shell_log "$i"
+		printf_shell_log "$i\n"
 		eval $i # run command
 	done
 }
@@ -409,7 +409,7 @@ function RunFwMonitorCommands()
 {
 	printf_shell_log "Starting FW Monitor\n"
 	for i in "${FW_MONITOR_SYNTAX[@]}"; do
-		printf_shell_log "$i"
+		printf_shell_log "$i\n"
 		eval $i # run command
 	done
 }
@@ -439,7 +439,7 @@ function RunKernelDebugCommands()
 {
 	printf_shell_log "Starting Kernel Debug\n"
 	for i in "${KERNEL_DEBUG_SYNTAX[@]}"; do
-		printf_shell_log "$i"
+		printf_shell_log "$i\n"
 		eval $i # run command
 	done
 }
