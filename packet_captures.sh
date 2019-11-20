@@ -434,8 +434,10 @@ function ZipAndClean()
 ###############################################################################
 interrupted()
 {
-	printf "\n\nScript interrupted, cleaning temporary files...\n"
+	printf "\n\nScript interrupted, stopping captures and debugs...\n"
 	StopCapturesAndDebugs
+	ZipAndClean
+	printf "Cleaning temporary files...\n"
 	clean_up # Calling manually and again below
 	printf "Completed\n"
 	exit 1 # Triggers clean_up
@@ -445,7 +447,7 @@ trap interrupted SIGHUP SIGINT SIGTERM # 1 2 15
 clean_up()
 {
 	pkill -P $$
-	rm "$LOGDIR" >/dev/null 2>&1
+	rm $LOGDIR/* 2>/dev/null
 }
 trap clean_up EXIT
 
