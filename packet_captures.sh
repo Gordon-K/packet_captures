@@ -430,6 +430,26 @@ function ZipAndClean()
 	echo "Check for updates to this script at: https://github.com/Gordon-K/packet_captures"
 }
 ###############################################################################
+# Process cleanup AND termination signals
+###############################################################################
+interrupted()
+{
+	printf "\n\nScript interrupted, cleaning temporary files...\n"
+	StopCapturesAndDebugs
+	clean_up # Calling manually and again below
+	printf "Completed\n"
+	exit 1 # Triggers clean_up
+}
+trap interrupted SIGHUP SIGINT SIGTERM # 1 2 15
+
+clean_up()
+{
+	pkill -P $$
+	rm "$LOGDIR" >/dev/null 2>&1
+}
+trap clean_up EXIT
+
+###############################################################################
 # Argument handling
 ###############################################################################
 # if script ran with no args 
