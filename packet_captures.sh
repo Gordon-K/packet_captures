@@ -101,7 +101,7 @@ printf_shell_log()
 	printf "$1" | tee -a $LOGFILE
 }
 
-printf_log "$HELP_VERSION"
+printf_log "$HELP_VERSION\n"
 START_DATE=$(/bin/date "+%d %b %Y %H:%M:%S %z")
 printf_log "Script Started at $START_DATE\n\n"
 
@@ -111,7 +111,7 @@ printf_log "Script Started at $START_DATE\n\n"
 function disk_space_check()
 {
 	while true; do
-		DISKCHECK=$(df -P $LOGDIR | grep / | awk '{ print $4 }')
+		DISKCHECK="$(df -P $LOGDIR | grep / | awk '{ print $4 }')"
 		if (( "$DISKCHECK" < 500000 )); then
 			printf_shell_log "\n\nDisk space is now less than 500MB. Stopping script...\n"
 			df -h "$LOGDIR"
