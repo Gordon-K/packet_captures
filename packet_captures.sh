@@ -24,7 +24,7 @@ Flags:
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version: 0.6.0 Nov 20, 2019
+Version: 0.6.1 Nov 20, 2019
 Check for updates to this script at: https://github.com/Gordon-K/packet_captures
 
 "
@@ -71,9 +71,9 @@ function InitializeLogs()
 	fi
 
 	# Log files and directories
-	LOGFILE="$LOGDIR/logs.txt"
-	OUTPUTDIR="$LOGDIR/outputs"
-	OUTPUTFILE="$OUTPUTDIR/${SCRIPT_NAME}_${DATE}.tgz"
+	LOGFILE=$LOGDIR/logs.txt
+	OUTPUTDIR=$LOGDIR/outputs
+	OUTPUTFILE=$OUTPUTDIR/${SCRIPT_NAME}_${DATE}.tgz
 
 	# create log directory
 	printf "Creating log directory: $LOGDIR\n"
@@ -111,8 +111,8 @@ printf_log "Script Started at $START_DATE\n\n"
 function disk_space_check()
 {
 	while true; do
-		DISKCHECK="$(df -P $LOGDIR | grep / | awk '{ print $4 }')"
-		if (( "$DISKCHECK" < 500000 )); then
+		DISKCHECK=$(df -P $LOGDIR | grep / | awk '{ print $4 }')
+		if (( "$DISKCHECK" < "500000" )); then
 			printf_shell_log "\n\nDisk space is now less than 500MB. Stopping script...\n"
 			df -h "$LOGDIR"
 			kill -15 $$
@@ -120,7 +120,7 @@ function disk_space_check()
 	sleep 5
 	done
 }
-disk_space_check &
+#disk_space_check &
 
 cpu_check()
 {
@@ -133,7 +133,7 @@ cpu_check()
 	sleep 5
 	done
 }
-cpu_check &
+#cpu_check &
 
 ###############################################################################
 # Functions
