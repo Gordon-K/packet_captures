@@ -3,8 +3,8 @@
 # Kyle Gordon
 # Diamond Services Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.5.5
-# Last Modified May 20, 2019
+# Version: 0.6.1
+# Last Modified Nov 20, 2019
 
 ###############################################################################
 # Help and Usage Information
