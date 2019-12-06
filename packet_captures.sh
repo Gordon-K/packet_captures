@@ -189,7 +189,7 @@ function ParseUniqueInterfaces()
 	fi
 
 	if [ ${#DESTINATION_IP_LIST[@]} -gt 0 ]; then
-		printf_log "Destination IPs found!"
+		printf_log "Destination IPs found!\n"
 		for DESTINATION_IP in ${DESTINATION_IP_LIST[*]}; do
 			printf_log "$DESTINATION_IP : "
 			INTERFACE="$(ip route get $DESTINATION_IP | sed -n 's/.* dev \([^ ]*\).*/\1/p')"
@@ -198,7 +198,7 @@ function ParseUniqueInterfaces()
 		done
 	fi
 
-	printf_log "Removing any duplicate interfaces"
+	printf_log "Removing any duplicate interfaces\n"
 	# remove duplicates from USED_INTERFACES
 	TCPDUMP_UNIQUE_INTERFACES=($(echo "${USED_INTERFACES[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' '))
 }
