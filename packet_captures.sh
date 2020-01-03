@@ -184,7 +184,9 @@ function ParseUniqueInterfaces()
 			printf_log "$SOURCE_IP : "
 			INTERFACE="$(ip route get $SOURCE_IP | sed -n 's/.* dev \([^ ]*\).*/\1/p')"
 			printf_log "$INTERFACE\n"
-			USED_INTERFACES+=("$INTERFACE")
+			if [ "$INTERFACE" != "lo" ]; then
+				USED_INTERFACES+=("$INTERFACE")
+			fi
 		done
 	fi
 
@@ -194,7 +196,9 @@ function ParseUniqueInterfaces()
 			printf_log "$DESTINATION_IP : "
 			INTERFACE="$(ip route get $DESTINATION_IP | sed -n 's/.* dev \([^ ]*\).*/\1/p')"
 			printf_log "$INTERFACE\n"
-			USED_INTERFACES+=("$INTERFACE")
+			if [ "$INTERFACE" != "lo" ]; then
+				USED_INTERFACES+=("$INTERFACE")
+			fi
 		done
 	fi
 
