@@ -321,7 +321,6 @@ function CreateNewFwMonitorFilterSyntax()
 {
 	# fw monitor -F "x.x.x.x,z,y.y.y.y,0,0" -F "y.y.y.y,0, x.x.x.x ,z ,0"
 	# This will filter connection "x.x.x.x:z --> y.y.y.y:<Any>, <protocol: Any>" or connection " y.y.y.y:<Any> --> x.x.x.x:z, <protocol: Any>"
-
 	NewFwMonitorFilter=""
 	if [ ${#UNIQUE_SOURCE_IPS[@]} -gt 0 ] && [ ${#UNIQUE_DESTINATION_IPS[@]} -gt 0 ] && [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
 		for (( port = 0; port < ${#UNIQUE_PORTS[@]}; ++port )); do
@@ -363,6 +362,19 @@ function CreateNewFwMonitorFilterSyntax()
 		done
 	else 
 		NewFwMonitorFilter=$NewFwMonitorFilter" -F \"0,0,0,0,0\""
+	fi
+
+	# Check to make sure that we will not need more than 5 filters
+	# New syntax is limited to 5 filters:
+	# PPAK 0: Get before set operation failed of
+	#  Set operation failed: failed to get parameter simple_debug_filter_saddr_6
+	#  set: Operation failed
+	#  Failed to set monitor filter (src IP)
+	if [ $(echo "$NewFwMonitorFilter" | grep -o "\-F" | wc -l) -gt 5 ]; then
+		tput setaf 1
+		tput bold
+		printf_shell_log "ERROR: More than 5 filters needed for capture! Capture will not be taken due to new FW Monitor syntax limitation - sk30583.\n Up to 5 filters are supported. Multiple filters are applied on packets in OR logical manner.\n"
+		tput sgr0
 	fi
 }
 
@@ -739,7 +751,7 @@ printf_log "================================\n"
 if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
 	printf_log "RUN_FW_MONITOR: $RUN_FW_MONITOR\n"
 
-	# FW Monitor syntax changed from R80.20 take 76 onwards
+	# FW Monitor syntax changed from R80.20 take 73 onwards
 	# Check for new FW Monitor syntax, if present use it instead of the old syntax
 	if [[ $(fw monitor -h 2>&1) != *'-F'* ]]; then
 		CreateFwMonitorSourceFilter
