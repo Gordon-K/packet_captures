@@ -3,8 +3,8 @@
 # Kyle Gordon
 # Diamond Services Engineer
 # Check Point Software Technologies Ltd.
-# Version: 0.6.1
-# Last Modified Nov 20, 2019
+# Version: 0.6.2
+# Last Modified Jan 9, 2020
 
 ###############################################################################
 # Help and Usage Information
@@ -24,7 +24,7 @@ Flags:
 HELP_VERSION="
 Packet Capture Script
 Script Created By Kyle Gordon
-Version: 0.6.1 Nov 20, 2019
+Version: 0.6.2 Jan 9, 2020
 Check for updates to this script at: https://github.com/Gordon-K/packet_captures
 
 "
