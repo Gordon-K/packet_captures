@@ -317,6 +317,60 @@ function RunTcpdumpCommands()
 	done
 }
 
+function CreateNewFwMonitorFilterSyntax()
+{
+	# fw monitor -F "x.x.x.x,z,y.y.y.y,0,0" -F "y.y.y.y,0, x.x.x.x ,z ,0"
+	# This will filter connection "x.x.x.x:z --> y.y.y.y:<Any>, <protocol: Any>" or connection " y.y.y.y:<Any> --> x.x.x.x:z, <protocol: Any>"
+
+	NewFwMonitorFilter=""
+	if [ ${#UNIQUE_SOURCE_IPS[@]} -gt 0 ] && [ ${#UNIQUE_DESTINATION_IPS[@]} -gt 0 ] && [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
+		for (( port = 0; port < ${#UNIQUE_PORTS[@]}; ++port )); do
+			for (( src = 0; src < ${#UNIQUE_SOURCE_IPS[@]}; ++src )); do
+				for (( dst = 0; dst < ${#UNIQUE_DESTINATION_IPS[@]}; ++dst )); do
+					NewFwMonitorFilter=$NewFwMonitorFilter" -F \"${UNIQUE_SOURCE_IPS[$src]},0,${UNIQUE_DESTINATION_IPS[$dst]},${UNIQUE_PORTS[$port]},0\""
+				done
+			done
+		done
+	elif [ ${#UNIQUE_SOURCE_IPS[@]} -gt 0 ] && [ ${#UNIQUE_DESTINATION_IPS[@]} -gt 0 ]; then
+		for (( src = 0; src < ${#UNIQUE_SOURCE_IPS[@]}; ++src )); do
+			for (( dst = 0; dst < ${#UNIQUE_DESTINATION_IPS[@]}; ++dst )); do
+				NewFwMonitorFilter=$NewFwMonitorFilter" -F \"${UNIQUE_SOURCE_IPS[$src]},0,${UNIQUE_DESTINATION_IPS[$dst]},0,0\""
+			done
+		done
+	elif [ ${#UNIQUE_SOURCE_IPS[@]} -gt 0 ] && [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
+		for (( port = 0; port < ${#UNIQUE_PORTS[@]}; ++port )); do
+			for (( src = 0; src < ${#UNIQUE_SOURCE_IPS[@]}; ++src )); do
+				NewFwMonitorFilter=$NewFwMonitorFilter" -F \"${UNIQUE_SOURCE_IPS[$src]},0,0,${UNIQUE_PORTS[$port]},0\""
+			done
+		done
+	elif [ ${#UNIQUE_DESTINATION_IPS[@]} -gt 0 ] && [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
+		for (( port = 0; port < ${#UNIQUE_PORTS[@]}; ++port )); do
+			for (( dst = 0; dst < ${#UNIQUE_DESTINATION_IPS[@]}; ++dst )); do
+				NewFwMonitorFilter=$NewFwMonitorFilter" -F \"0,0,${UNIQUE_DESTINATION_IPS[$dst]},${UNIQUE_PORTS[$port]},0\""
+			done
+		done
+	elif [ ${#UNIQUE_SOURCE_IPS[@]} -gt 0 ]; then
+		for (( src = 0; src < ${#UNIQUE_SOURCE_IPS[@]}; ++src )); do
+			NewFwMonitorFilter=$NewFwMonitorFilter" -F \"${UNIQUE_SOURCE_IPS[$src]},0,0,0,0\""
+		done
+	elif [ ${#UNIQUE_DESTINATION_IPS[@]} -gt 0 ]; then
+		for (( dst = 0; dst < ${#UNIQUE_DESTINATION_IPS[@]}; ++dst )); do
+			NewFwMonitorFilter=$NewFwMonitorFilter" -F \"0,0,${UNIQUE_DESTINATION_IPS[$dst]},0,0\""
+		done
+	elif [ ${#UNIQUE_PORTS[@]} -gt 0 ]; then
+		for (( port = 0; port < ${#UNIQUE_PORTS[@]}; ++port )); do
+			NewFwMonitorFilter=$NewFwMonitorFilter" -F \"0,0,0,${UNIQUE_PORTS[$port]},0\""
+		done
+	else 
+		NewFwMonitorFilter=$NewFwMonitorFilter" -F \"0,0,0,0,0\""
+	fi
+}
+
+function BuildNewFwMonitorSyntax()
+{
+	FW_MONITOR_SYNTAX+=("fw monitor $NewFwMonitorFilter -o $LOGDIR/fw_mon.pcap >/dev/null 2>&1 &")
+}
+
 function CreateFwMonitorSourceFilter()
 { 
 	FwMonitorSourceFilter="("
@@ -686,11 +740,16 @@ if [ "$RUN_FW_MONITOR" -eq "$TRUE" ]; then
 	printf_log "RUN_FW_MONITOR: $RUN_FW_MONITOR\n"
 
 	# FW Monitor syntax changed from R80.20 take 76 onwards
-	#TODO: Create different FW Monitor filters for new and old syntax
-	CreateFwMonitorSourceFilter
-	CreateFwMonitorDestinationFilter
-	CreateFwMonitorPortFilter
-	BuildFwMonitorSyntax
+	# Check for new FW Monitor syntax, if present use it instead of the old syntax
+	if [[ $(fw monitor -h 2>&1) != *'-F'* ]]; then
+		CreateFwMonitorSourceFilter
+		CreateFwMonitorDestinationFilter
+		CreateFwMonitorPortFilter
+		BuildFwMonitorSyntax
+	else
+		CreateNewFwMonitorFilterSyntax
+		BuildNewFwMonitorSyntax
+	fi 
 
 	printf_log "FW Monitor syntax: \n"
 	for i in "${FW_MONITOR_SYNTAX[@]}"; do
